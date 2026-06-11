@@ -56,6 +56,24 @@ export const environmentSchema = z.object({
   JIRA_USER_EMAIL: optionalString,
   JIRA_API_TOKEN: optionalString,
   GITHUB_TOKEN: optionalString,
+  GITHUB_OWNER: optionalString,
+  GITHUB_DEFAULT_REPOSITORY: optionalString,
+  GITHUB_DEFAULT_BASE_BRANCH: z.string().trim().optional().default('main'),
+  GITHUB_PR_CREATION_ENABLED: booleanFromEnv,
+  GITHUB_DEFAULT_DRAFT_PR: z
+    .union([z.boolean(), z.string()])
+    .optional()
+    .transform((value) => {
+      if (typeof value === 'boolean') {
+        return value;
+      }
+
+      if (value === undefined) {
+        return true;
+      }
+
+      return value !== 'false';
+    }),
 });
 
 export type EnvironmentVariables = z.infer<typeof environmentSchema>;

@@ -34,6 +34,11 @@ export interface JiraSettings {
 
 export interface GitHubSettings {
   token?: string;
+  owner?: string;
+  defaultRepository?: string;
+  defaultBaseBranch: string;
+  prCreationEnabled: boolean;
+  defaultDraftPullRequest: boolean;
   configured: boolean;
 }
 
@@ -113,8 +118,10 @@ export class SettingsService {
 
   async getActionExecutionMode(): Promise<ActionExecutionMode> {
     const persistedMode = await this.getWorkspaceSetting('actionExecutionMode');
-    return (persistedMode as ActionExecutionMode | undefined) ??
-      this.appConfigService.actionExecutionMode;
+    return (
+      (persistedMode as ActionExecutionMode | undefined) ??
+      this.appConfigService.actionExecutionMode
+    );
   }
 
   async setActionExecutionMode(mode: ActionExecutionMode) {
@@ -122,9 +129,12 @@ export class SettingsService {
   }
 
   async getSelectedAiProvider(): Promise<SupportedAiProvider> {
-    const persistedProvider = await this.getWorkspaceSetting('selectedAiProvider');
-    return (persistedProvider as SupportedAiProvider | undefined) ??
-      this.appConfigService.defaultAiProvider;
+    const persistedProvider =
+      await this.getWorkspaceSetting('selectedAiProvider');
+    return (
+      (persistedProvider as SupportedAiProvider | undefined) ??
+      this.appConfigService.defaultAiProvider
+    );
   }
 
   async setSelectedAiProvider(provider: SupportedAiProvider) {
@@ -141,14 +151,15 @@ export class SettingsService {
       openAiModel:
         openAiCredential?.metadata?.model ?? this.appConfigService.openAiModel,
       openAiApiKeyConfigured: Boolean(
-        openAiCredential?.secretData?.apiKey ?? this.appConfigService.openAiApiKey,
+        openAiCredential?.secretData?.apiKey ??
+        this.appConfigService.openAiApiKey,
       ),
       anthropicModel:
         anthropicCredential?.metadata?.model ??
         this.appConfigService.anthropicModel,
       anthropicApiKeyConfigured: Boolean(
         anthropicCredential?.secretData?.apiKey ??
-          this.appConfigService.anthropicApiKey,
+        this.appConfigService.anthropicApiKey,
       ),
     };
   }
@@ -156,7 +167,8 @@ export class SettingsService {
   async getSlackSettings(): Promise<SlackSettings> {
     const slackCredential = await this.getProviderCredential('slack');
     const botToken =
-      slackCredential?.secretData?.botToken ?? this.appConfigService.slackBotToken;
+      slackCredential?.secretData?.botToken ??
+      this.appConfigService.slackBotToken;
     const signingSecret =
       slackCredential?.secretData?.signingSecret ??
       this.appConfigService.slackSigningSecret;
@@ -174,11 +186,14 @@ export class SettingsService {
     const baseUrl =
       jiraConnection?.config?.baseUrl ?? this.appConfigService.jiraBaseUrl;
     const projectKey =
-      jiraConnection?.config?.projectKey ?? this.appConfigService.jiraProjectKey;
+      jiraConnection?.config?.projectKey ??
+      this.appConfigService.jiraProjectKey;
     const userEmail =
-      jiraCredential?.metadata?.userEmail ?? this.appConfigService.jiraUserEmail;
+      jiraCredential?.metadata?.userEmail ??
+      this.appConfigService.jiraUserEmail;
     const apiToken =
-      jiraCredential?.secretData?.apiToken ?? this.appConfigService.jiraApiToken;
+      jiraCredential?.secretData?.apiToken ??
+      this.appConfigService.jiraApiToken;
 
     return {
       baseUrl,
@@ -191,12 +206,38 @@ export class SettingsService {
 
   async getGitHubSettings(): Promise<GitHubSettings> {
     const githubCredential = await this.getProviderCredential('github');
+    const githubConnection = await this.getIntegrationConnection('github');
     const token =
       githubCredential?.secretData?.token ?? this.appConfigService.githubToken;
+    const owner =
+      githubConnection?.config?.owner ?? this.appConfigService.githubOwner;
+    const defaultRepository =
+      githubConnection?.config?.defaultRepository ??
+      this.appConfigService.githubDefaultRepository;
+    const defaultBaseBranch =
+      githubConnection?.config?.defaultBaseBranch ??
+      this.appConfigService.githubDefaultBaseBranch;
+    const prCreationEnabled =
+      githubConnection?.config?.prCreationEnabled === 'false'
+        ? false
+        : githubConnection?.config?.prCreationEnabled === 'true'
+          ? true
+          : this.appConfigService.githubPrCreationEnabled;
+    const defaultDraftPullRequest =
+      githubConnection?.config?.defaultDraftPullRequest === 'false'
+        ? false
+        : githubConnection?.config?.defaultDraftPullRequest === 'true'
+          ? true
+          : this.appConfigService.githubDefaultDraftPr;
 
     return {
       token,
-      configured: Boolean(token),
+      owner,
+      defaultRepository,
+      defaultBaseBranch: defaultBaseBranch?.trim() || 'main',
+      prCreationEnabled,
+      defaultDraftPullRequest,
+      configured: Boolean(token && owner && defaultRepository),
     };
   }
 }

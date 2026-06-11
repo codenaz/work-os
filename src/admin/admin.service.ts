@@ -61,6 +61,11 @@ export class AdminService {
       githubSettings: {
         configured: githubSettings.configured,
         tokenConfigured: Boolean(githubSettings.token),
+        owner: githubSettings.owner ?? '',
+        defaultRepository: githubSettings.defaultRepository ?? '',
+        defaultBaseBranch: githubSettings.defaultBaseBranch,
+        prCreationEnabled: githubSettings.prCreationEnabled,
+        defaultDraftPullRequest: githubSettings.defaultDraftPullRequest,
       },
       recentEvents,
       recentRuns,
@@ -159,7 +164,19 @@ export class AdminService {
     await this.settingsService.upsertIntegrationConnection(
       'github',
       githubSettings.configured ? 'connected' : 'needs-config',
-      {},
+      {
+        ...this.filterEmpty({
+          owner: dto.owner,
+          defaultRepository: dto.defaultRepository,
+          defaultBaseBranch: dto.defaultBaseBranch,
+        }),
+        ...(dto.prCreationEnabled === undefined
+          ? {}
+          : { prCreationEnabled: String(dto.prCreationEnabled) }),
+        ...(dto.defaultDraftPullRequest === undefined
+          ? {}
+          : { defaultDraftPullRequest: String(dto.defaultDraftPullRequest) }),
+      },
     );
   }
 

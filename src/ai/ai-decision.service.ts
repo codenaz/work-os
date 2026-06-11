@@ -1,24 +1,34 @@
 import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import { HumanMessage, SystemMessage } from '@langchain/core/messages';
-import { isAIMessageChunk } from '@langchain/core/messages';
 import { z } from 'zod';
 import { CanonicalEvent } from '../events/canonical-event';
-import { SettingsService } from '../settings/settings.service';
+import { GitHubSettings, SettingsService } from '../settings/settings.service';
 import { AiProviderFactory } from './ai-provider.factory';
-import {
-  isWorkflowActionSupported,
-  WorkflowDecision,
-  workflowActionPolicies,
-} from './ai.types';
+import { isWorkflowActionSupported, WorkflowDecision } from './ai.types';
 
 const workflowDecisionSchema = z.object({
-  action: z.enum(['respond_in_slack', 'create_jira_ticket', 'skip_event']),
+  action: z.enum([
+    'respond_in_slack',
+    'create_jira_ticket',
+    'create_github_pr',
+    'skip_event',
+  ]),
   responseText: z.string().min(1),
   jiraSummary: z.string().optional(),
   jiraDescription: z.string().optional(),
+  githubPrTitle: z.string().optional(),
+  githubPrBody: z.string().optional(),
+  githubRepository: z.string().optional(),
+  githubOwner: z.string().optional(),
+  githubBaseBranch: z.string().optional(),
+  githubDraft: z.boolean().optional(),
   rationale: z.string().min(1),
   confidence: z.enum(['low', 'medium', 'high']),
 });
+
+const MIN_PR_CONTEXT_WORD_COUNT = 8;
+const MIN_PR_TITLE_LENGTH = 8;
+const MIN_PR_BODY_LENGTH = 24;
 
 @Injectable()
 export class AiDecisionService {
@@ -28,16 +38,20 @@ export class AiDecisionService {
   ) {}
 
   async decide(event: CanonicalEvent): Promise<WorkflowDecision> {
-    const aiSettings = await this.settingsService.getAiSettings();
+    const [aiSettings, githubSettings] = await Promise.all([
+      this.settingsService.getAiSettings(),
+      this.settingsService.getGitHubSettings(),
+    ]);
 
     if (aiSettings.mode === 'stub' || aiSettings.selectedProvider === 'stub') {
-      return this.createStubDecision(event);
+      return this.createStubDecision(event, githubSettings);
     }
 
-    const configuredModel = await this.aiProviderFactory.createConfiguredModel();
+    const configuredModel =
+      await this.aiProviderFactory.createConfiguredModel();
 
     if (!configuredModel) {
-      return this.createStubDecision(event);
+      return this.createStubDecision(event, githubSettings);
     }
 
     const completion = await configuredModel.client.invoke([
@@ -46,6 +60,14 @@ export class AiDecisionService {
         JSON.stringify(
           {
             event,
+            githubSettings: {
+              owner: githubSettings.owner,
+              defaultRepository: githubSettings.defaultRepository,
+              defaultBaseBranch: githubSettings.defaultBaseBranch,
+              prCreationEnabled: githubSettings.prCreationEnabled,
+              defaultDraftPullRequest: githubSettings.defaultDraftPullRequest,
+              configured: githubSettings.configured,
+            },
           },
           null,
           2,
@@ -53,16 +75,76 @@ export class AiDecisionService {
       ),
     ]);
     const rawText = this.extractText(completion.content);
-    const parsed = workflowDecisionSchema.parse(this.extractJsonObject(rawText));
+    const parsed = workflowDecisionSchema.parse(
+      this.extractJsonObject(rawText),
+    );
 
-    return this.enforceActionPolicy(event, {
-      ...parsed,
-      provider: configuredModel.provider,
-      model: configuredModel.model,
-    });
+    return this.enforceActionPolicy(
+      event,
+      {
+        ...parsed,
+        provider: configuredModel.provider,
+        model: configuredModel.model,
+      },
+      githubSettings,
+    );
   }
 
-  private createStubDecision(event: CanonicalEvent): WorkflowDecision {
+  private createStubDecision(
+    event: CanonicalEvent,
+    githubSettings: GitHubSettings,
+  ): WorkflowDecision {
+    const normalizedText = event.content.text.toLowerCase();
+    const asksForPullRequest =
+      /(pull request|create pr|open pr|github pr|raise pr)/.test(
+        normalizedText,
+      );
+    const hasClearTask =
+      /(implement|add|fix|update|refactor|cleanup|clean up|support|build|migrate)/.test(
+        normalizedText,
+      );
+    const hasEnoughDetail =
+      normalizedText.split(/\s+/).filter(Boolean).length >=
+      MIN_PR_CONTEXT_WORD_COUNT;
+
+    if (asksForPullRequest) {
+      const hasSafeConfiguration =
+        githubSettings.prCreationEnabled && githubSettings.configured;
+      if (hasSafeConfiguration && hasClearTask && hasEnoughDetail) {
+        return this.enforceActionPolicy(
+          event,
+          {
+            action: 'create_github_pr',
+            responseText:
+              'I prepared a GitHub pull request to execute the requested change with a bounded implementation plan.',
+            githubPrTitle: this.summarizeForGitHubTitle(event.content.text),
+            githubPrBody: this.buildDefaultPrBody(event),
+            githubRepository: githubSettings.defaultRepository,
+            githubOwner: githubSettings.owner,
+            githubBaseBranch: githubSettings.defaultBaseBranch,
+            githubDraft: githubSettings.defaultDraftPullRequest,
+            rationale:
+              'The request explicitly asks for a pull request and includes enough implementation detail to create a bounded change safely.',
+            confidence: 'medium',
+            provider: 'stub',
+            model: 'rule-based-router',
+          },
+          githubSettings,
+        );
+      }
+
+      return {
+        action: 'skip_event',
+        responseText:
+          'I recorded the event but skipped pull request creation because the request lacks safe context or GitHub PR creation settings are incomplete.',
+        rationale:
+          'Autonomous PR creation is conservative and requires explicit configuration plus clear, bounded implementation context.',
+        confidence: 'high',
+        provider: 'stub',
+        model: 'rule-based-router',
+      };
+    }
+
     if (event.source !== 'slack') {
       return {
         action: 'skip_event',
@@ -76,67 +158,106 @@ export class AiDecisionService {
       };
     }
 
-    const normalizedText = event.content.text.toLowerCase();
-    const shouldCreateTicket = /(bug|issue|ticket|todo|follow up|follow-up|fix)/.test(
-      normalizedText,
-    );
+    const shouldCreateTicket =
+      /(bug|issue|ticket|todo|follow up|follow-up|fix)/.test(normalizedText);
 
     if (shouldCreateTicket) {
-      return this.enforceActionPolicy(event, {
-        action: 'create_jira_ticket',
+      return this.enforceActionPolicy(
+        event,
+        {
+          action: 'create_jira_ticket',
+          responseText:
+            'I turned that Slack request into a Jira task and posted the tracking link here.',
+          jiraSummary: this.summarizeForJira(event.content.text),
+          jiraDescription: event.content.text,
+          rationale:
+            'The message looks like actionable work that should be tracked in Jira.',
+          confidence: 'medium',
+          provider: 'stub',
+          model: 'rule-based-router',
+        },
+        githubSettings,
+      );
+    }
+
+    return this.enforceActionPolicy(
+      event,
+      {
+        action: 'respond_in_slack',
         responseText:
-          'I turned that Slack request into a Jira task and posted the tracking link here.',
-        jiraSummary: this.summarizeForJira(event.content.text),
-        jiraDescription: event.content.text,
+          'I reviewed the message and responded directly in Slack because it reads like a conversational request.',
         rationale:
-          'The message looks like actionable work that should be tracked in Jira.',
+          'The message does not clearly ask for durable project tracking, so Slack is the lighter-weight response.',
         confidence: 'medium',
         provider: 'stub',
         model: 'rule-based-router',
-      });
-    }
-
-    return this.enforceActionPolicy(event, {
-      action: 'respond_in_slack',
-      responseText:
-        'I reviewed the message and responded directly in Slack because it reads like a conversational request.',
-      rationale:
-        'The message does not clearly ask for durable project tracking, so Slack is the lighter-weight response.',
-      confidence: 'medium',
-      provider: 'stub',
-      model: 'rule-based-router',
-    });
+      },
+      githubSettings,
+    );
   }
 
   private buildSystemPrompt() {
     return [
       'You are the routing brain for Work OS.',
-      'You may choose exactly one action: respond_in_slack, create_jira_ticket, or skip_event.',
-      'Return only valid JSON with keys action, responseText, jiraSummary, jiraDescription, rationale, confidence.',
+      'You may choose exactly one action: respond_in_slack, create_jira_ticket, create_github_pr, or skip_event.',
+      'Return only valid JSON with keys action, responseText, jiraSummary, jiraDescription, githubPrTitle, githubPrBody, githubRepository, githubOwner, githubBaseBranch, githubDraft, rationale, confidence.',
       'respond_in_slack is only valid for Slack events that have a conversational target.',
-      'skip_event is the safe choice when the current workflow should only record the event with no external action.',
-      'For Jira events, prefer skip_event unless the event clearly justifies a downstream action supported by the current toolset.',
-      'Use create_jira_ticket only for durable work that belongs in project tracking.',
-      'Use respond_in_slack for conversational replies, acknowledgements, and low-friction responses.',
+      'create_github_pr is only valid for Slack or Jira events and only when context is sufficient for safe bounded execution.',
+      'skip_event is the safe choice when context is weak, unsafe, or configuration is incomplete.',
+      'Prefer draft pull requests unless confidence is high and bounded implementation context is explicit.',
     ].join(' ');
   }
 
   private enforceActionPolicy(
     event: CanonicalEvent,
     decision: WorkflowDecision,
+    githubSettings: GitHubSettings,
   ): WorkflowDecision {
-    if (isWorkflowActionSupported(decision.action, event)) {
-      return decision;
+    if (!isWorkflowActionSupported(decision.action, event)) {
+      return this.asSkipDecision(
+        decision,
+        `Requested action ${decision.action} is not supported for ${event.source} events.`,
+      );
     }
 
+    if (decision.action === 'create_github_pr') {
+      const title = decision.githubPrTitle?.trim() ?? '';
+      const body = decision.githubPrBody?.trim() ?? '';
+      const hasEnoughContext =
+        title.length >= MIN_PR_TITLE_LENGTH &&
+        body.length >= MIN_PR_BODY_LENGTH;
+      const hasConfiguration =
+        githubSettings.configured && githubSettings.prCreationEnabled;
+
+      if (!hasEnoughContext || !hasConfiguration) {
+        return this.asSkipDecision(
+          decision,
+          'GitHub PR creation requires explicit repository configuration and sufficiently detailed PR title/body context.',
+        );
+      }
+    }
+
+    return decision;
+  }
+
+  private asSkipDecision(
+    decision: WorkflowDecision,
+    reason: string,
+  ): WorkflowDecision {
     return {
       ...decision,
       action: 'skip_event',
       responseText:
-        'I recorded the event without taking an external action because the requested action is not supported for this source yet.',
+        'I recorded the event without taking an external action because the requested action is not supported or safe with the current context.',
       jiraSummary: undefined,
       jiraDescription: undefined,
-      rationale: `${decision.rationale} ${decision.action} is not supported for ${event.source} events under the current workflow policy, so the workflow was coerced to skip_event.`,
+      githubPrTitle: undefined,
+      githubPrBody: undefined,
+      githubRepository: undefined,
+      githubOwner: undefined,
+      githubBaseBranch: undefined,
+      githubDraft: undefined,
+      rationale: `${decision.rationale} ${reason}`,
     };
   }
 
@@ -155,7 +276,7 @@ export class AiDecisionService {
           return part;
         }
 
-        if (isAIMessageChunk(part)) {
+        if (this.hasContent(part)) {
           return this.extractText(part.content);
         }
 
@@ -177,6 +298,10 @@ export class AiDecisionService {
     );
   }
 
+  private hasContent(value: unknown): value is { content: unknown } {
+    return typeof value === 'object' && value !== null && 'content' in value;
+  }
+
   private extractJsonObject(value: string) {
     const start = value.indexOf('{');
     const end = value.lastIndexOf('}');
@@ -191,11 +316,65 @@ export class AiDecisionService {
   }
 
   private summarizeForJira(text: string) {
-    const summary = text
-      .replace(/<[^>]+>/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
+    const summary = this.sanitizePlainText(text);
 
     return summary.slice(0, 120) || 'Slack follow-up';
+  }
+
+  private summarizeForGitHubTitle(text: string) {
+    const summary = this.sanitizePlainText(text);
+    return summary.slice(0, 100) || 'Work OS requested change';
+  }
+
+  private buildDefaultPrBody(event: CanonicalEvent) {
+    return [
+      '## Why',
+      event.content.text,
+      '',
+      '## Implementation plan',
+      '- Review the impacted modules and affected workflows',
+      '- Implement the requested change with conservative scope',
+      '- Add or update tests for regression coverage',
+      '',
+      '## Source event',
+      `- Source: ${event.source}`,
+      `- Event ID: ${event.sourceEventId}`,
+    ].join('\n');
+  }
+
+  private sanitizePlainText(value: string) {
+    let result = '';
+    let inTag = false;
+    let previousWasWhitespace = false;
+
+    for (const char of value) {
+      if (char === '<') {
+        inTag = true;
+        continue;
+      }
+
+      if (char === '>' && inTag) {
+        inTag = false;
+        continue;
+      }
+
+      if (inTag) {
+        continue;
+      }
+
+      const isWhitespace = /\s/.test(char);
+      if (isWhitespace) {
+        if (!previousWasWhitespace) {
+          result += ' ';
+          previousWasWhitespace = true;
+        }
+        continue;
+      }
+
+      previousWasWhitespace = false;
+      result += char;
+    }
+
+    return result.trim();
   }
 }

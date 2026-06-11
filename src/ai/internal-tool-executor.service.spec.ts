@@ -1,5 +1,6 @@
 import { InternalServerErrorException } from '@nestjs/common';
 import { CanonicalEvent } from '../events/canonical-event';
+import { GitHubClientService } from '../integrations/github/github-client.service';
 import { JiraClientService } from '../integrations/jira/jira-client.service';
 import { SlackClientService } from '../integrations/slack/slack-client.service';
 import { InternalToolExecutorService } from './internal-tool-executor.service';
@@ -23,19 +24,25 @@ describe('InternalToolExecutorService', () => {
   };
 
   it('creates a Jira ticket without requiring a Slack channel', async () => {
+    const sendMessageMock = jest.fn();
+    const createIssueMock = jest.fn().mockResolvedValue({
+      issueKey: 'OPS-101',
+      issueUrl: 'https://jira.example.com/browse/OPS-101',
+    });
     const slackClientService = {
-      sendMessage: jest.fn(),
+      sendMessage: sendMessageMock,
     } as unknown as SlackClientService;
     const jiraClientService = {
-      createIssue: jest.fn().mockResolvedValue({
-        issueKey: 'OPS-101',
-        issueUrl: 'https://jira.example.com/browse/OPS-101',
-      }),
+      createIssue: createIssueMock,
     } as unknown as JiraClientService;
+    const githubClientService = {
+      createPullRequest: jest.fn(),
+    } as unknown as GitHubClientService;
 
     const service = new InternalToolExecutorService(
       slackClientService,
       jiraClientService,
+      githubClientService,
     );
 
     const decision: WorkflowDecision = {
@@ -57,24 +64,30 @@ describe('InternalToolExecutorService', () => {
         },
       },
     });
-    expect(jiraClientService.createIssue).toHaveBeenCalledWith({
+    expect(createIssueMock).toHaveBeenCalledWith({
       summary: 'Track follow-up work',
       description: 'Please track this follow up task',
     });
-    expect(slackClientService.sendMessage).not.toHaveBeenCalled();
+    expect(sendMessageMock).not.toHaveBeenCalled();
   });
 
   it('can skip an event without invoking downstream clients', async () => {
+    const sendMessageMock = jest.fn();
+    const createIssueMock = jest.fn();
     const slackClientService = {
-      sendMessage: jest.fn(),
+      sendMessage: sendMessageMock,
     } as unknown as SlackClientService;
     const jiraClientService = {
-      createIssue: jest.fn(),
+      createIssue: createIssueMock,
     } as unknown as JiraClientService;
+    const githubClientService = {
+      createPullRequest: jest.fn(),
+    } as unknown as GitHubClientService;
 
     const service = new InternalToolExecutorService(
       slackClientService,
       jiraClientService,
+      githubClientService,
     );
 
     const decision: WorkflowDecision = {
@@ -92,8 +105,8 @@ describe('InternalToolExecutorService', () => {
         reason: 'Recorded only.',
       },
     });
-    expect(slackClientService.sendMessage).not.toHaveBeenCalled();
-    expect(jiraClientService.createIssue).not.toHaveBeenCalled();
+    expect(sendMessageMock).not.toHaveBeenCalled();
+    expect(createIssueMock).not.toHaveBeenCalled();
   });
 
   it('still requires a Slack channel for Slack responses', async () => {
@@ -104,6 +117,9 @@ describe('InternalToolExecutorService', () => {
       {
         createIssue: jest.fn(),
       } as unknown as JiraClientService,
+      {
+        createPullRequest: jest.fn(),
+      } as unknown as GitHubClientService,
     );
 
     const decision: WorkflowDecision = {
@@ -119,6 +135,66 @@ describe('InternalToolExecutorService', () => {
       new InternalServerErrorException(
         'Slack response execution requires a target channel',
       ),
+    );
+  });
+
+  it('executes create_github_pr and returns PR metadata', async () => {
+    const sendMessageMock = jest.fn();
+    const createIssueMock = jest.fn();
+    const createPullRequestMock = jest.fn().mockResolvedValue({
+      mode: 'mock',
+      pullRequestNumber: 1,
+      pullRequestUrl: 'https://github.com/acme/work-os/pull/1',
+      branchName: 'work-os/slack/ev1',
+    });
+    const slackClientService = {
+      sendMessage: sendMessageMock,
+    } as unknown as SlackClientService;
+    const jiraClientService = {
+      createIssue: createIssueMock,
+    } as unknown as JiraClientService;
+    const githubClientService = {
+      createPullRequest: createPullRequestMock,
+    } as unknown as GitHubClientService;
+
+    const service = new InternalToolExecutorService(
+      slackClientService,
+      jiraClientService,
+      githubClientService,
+    );
+    const slackEvent: CanonicalEvent = {
+      ...baseEvent,
+      source: 'slack',
+      sourceEventId: 'Ev1',
+      conversation: {
+        channelId: 'C123',
+      },
+    };
+
+    const decision: WorkflowDecision = {
+      action: 'create_github_pr',
+      responseText: 'Opening a draft PR.',
+      githubPrTitle: 'Add GitHub webhook support',
+      githubPrBody: 'Implements GitHub webhook ingestion and safe PR routing.',
+      rationale: 'Request is explicit and bounded.',
+      confidence: 'medium',
+      provider: 'stub',
+      model: 'rule-based-router',
+    };
+
+    await expect(service.execute(decision, slackEvent)).resolves.toMatchObject({
+      output: {
+        pullRequest: {
+          pullRequestUrl: 'https://github.com/acme/work-os/pull/1',
+        },
+      },
+    });
+    expect(createPullRequestMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        source: 'slack',
+        sourceEventId: 'Ev1',
+        title: 'Add GitHub webhook support',
+      }),
     );
   });
 });

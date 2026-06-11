@@ -103,4 +103,32 @@ export class AppConfigService {
   get githubToken() {
     return this.configService.get('GITHUB_TOKEN', { infer: true });
   }
+
+  get githubOwner() {
+    return this.configService.get('GITHUB_OWNER', { infer: true });
+  }
+
+  get githubDefaultRepository() {
+    return this.configService.get('GITHUB_DEFAULT_REPOSITORY', { infer: true });
+  }
+
+  get githubDefaultBaseBranch() {
+    return (
+      this.configService.get('GITHUB_DEFAULT_BASE_BRANCH', { infer: true }) ??
+      'main'
+    );
+  }
+
+  get githubPrCreationEnabled() {
+    return (
+      this.configService.get('GITHUB_PR_CREATION_ENABLED', { infer: true }) ??
+      false
+    );
+  }
+
+  get githubDefaultDraftPr() {
+    return (
+      this.configService.get('GITHUB_DEFAULT_DRAFT_PR', { infer: true }) ?? true
+    );
+  }
 }

@@ -1,4 +1,5 @@
 import { JiraWebhookDto } from '../integrations/jira/dto/jira-webhook.dto';
+import { GitHubWebhookDto } from '../integrations/github/dto/github-webhook.dto';
 import { SlackEventEnvelopeDto } from '../integrations/slack/dto/slack-event-envelope.dto';
 import { CanonicalEventService } from './canonical-event.service';
 
@@ -143,5 +144,49 @@ describe('CanonicalEventService', () => {
         },
       },
     });
+  });
+
+  it('normalizes supported GitHub issue comment events', () => {
+    const event = service.fromGitHubEvent(
+      {
+        eventType: 'issue_comment',
+        action: 'created',
+        repository: {
+          full_name: 'acme/work-os',
+          name: 'work-os',
+          owner: {
+            login: 'acme',
+          },
+        },
+        issue: {
+          number: 42,
+          title: 'Improve webhook policy',
+          body: 'Need safer PR routing.',
+        },
+        comment: {
+          body: 'Please create a PR with conservative defaults.',
+        },
+        sender: {
+          login: 'pat',
+        },
+      } satisfies GitHubWebhookDto,
+      'delivery-123',
+    );
+
+    expect(event).toEqual(
+      expect.objectContaining({
+        source: 'github',
+        sourceEventId: 'delivery-123',
+        eventType: 'issue_comment',
+        idempotencyKey: 'github:delivery-123',
+        correlationId: 'acme/work-os',
+        actor: {
+          id: 'pat',
+        },
+        content: {
+          text: 'Improve webhook policy\n\nNeed safer PR routing.\n\nPlease create a PR with conservative defaults.',
+        },
+      }),
+    );
   });
 });

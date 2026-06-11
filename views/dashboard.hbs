@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Work OS Admin</title>
+    <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+    <link rel="stylesheet" href="/admin.css" />
+  </head>
+  <body>
+    <main class="container">
+      <header class="header">
+        <div>
+          <h1>Work OS admin</h1>
+          <p>Single-tenant control surface for Slack, Jira, GitHub, and AI routing.</p>
+        </div>
+        <form method="post" action="/admin/logout">
+          <button type="submit" class="secondary">Sign out</button>
+        </form>
+      </header>
+      {{#if message}}
+        <p class="notice {{#if messageIsError}}error{{/if}}">{{message}}</p>
+      {{/if}}
+      <section class="grid summary">
+        <article class="card">
+          <h2>Health</h2>
+          <p>Status: <strong>{{health.status}}</strong></p>
+          <p>Persistence: {{health.modes.persistence}}</p>
+          <p>AI: {{health.modes.ai}}</p>
+          <p>Selected provider: {{health.modes.selectedProvider}}</p>
+          <p>Action mode: {{health.modes.actionExecution}}</p>
+        </article>
+        <article class="card">
+          <h2>Integrations</h2>
+          <p>Slack: <strong class="{{#if health.integrations.slack}}good{{else}}bad{{/if}}">{{#if health.integrations.slack}}configured{{else}}needs config{{/if}}</strong></p>
+          <p>Jira: <strong class="{{#if health.integrations.jira}}good{{else}}bad{{/if}}">{{#if health.integrations.jira}}configured{{else}}needs config{{/if}}</strong></p>
+          <p>GitHub: <strong class="{{#if health.integrations.github}}good{{else}}bad{{/if}}">{{#if health.integrations.github}}configured{{else}}needs config{{/if}}</strong></p>
+        </article>
+      </section>
+      <section class="grid">
+        <form method="post" action="/admin/settings/modes" class="card stack">
+          <h2>Runtime modes</h2>
+          <label>
+            <span>Selected AI provider</span>
+            <select name="selectedAiProvider">
+              {{#each selectedProviderOptions}}
+                <option value="{{value}}" {{#if selected}}selected{{/if}}>{{value}}</option>
+              {{/each}}
+            </select>
+          </label>
+          <label>
+            <span>Action execution mode</span>
+            <select name="actionExecutionMode">
+              {{#each actionExecutionOptions}}
+                <option value="{{value}}" {{#if selected}}selected{{/if}}>{{value}}</option>
+              {{/each}}
+            </select>
+          </label>
+          <button type="submit">Save runtime modes</button>
+        </form>
+        <form method="post" action="/admin/settings/ai" class="card stack">
+          <h2>AI providers</h2>
+          <p>AI mode from environment: <strong>{{aiSettings.mode}}</strong></p>
+          <label>
+            <span>OpenAI model</span>
+            <input name="openAiModel" value="{{aiSettings.openAiModel}}" />
+          </label>
+          <label>
+            <span>OpenAI API key</span>
+            <input name="openAiApiKey" type="password" placeholder="{{#if aiSettings.openAiApiKeyConfigured}}configured{{else}}not set{{/if}}" />
+          </label>
+          <label>
+            <span>Anthropic model</span>
+            <input name="anthropicModel" value="{{aiSettings.anthropicModel}}" />
+          </label>
+          <label>
+            <span>Anthropic API key</span>
+            <input name="anthropicApiKey" type="password" placeholder="{{#if aiSettings.anthropicApiKeyConfigured}}configured{{else}}not set{{/if}}" />
+          </label>
+          <button type="submit">Save AI settings</button>
+        </form>
+        <form method="post" action="/admin/settings/slack" class="card stack">
+          <h2>Slack</h2>
+          <p>Configured: <strong class="{{#if slackSettings.configured}}good{{else}}bad{{/if}}">{{#if slackSettings.configured}}configured{{else}}needs config{{/if}}</strong></p>
+          <label>
+            <span>Bot token</span>
+            <input name="botToken" type="password" placeholder="{{#if slackSettings.botTokenConfigured}}configured{{else}}not set{{/if}}" />
+          </label>
+          <label>
+            <span>Signing secret</span>
+            <input name="signingSecret" type="password" placeholder="{{#if slackSettings.signingSecretConfigured}}configured{{else}}not set{{/if}}" />
+          </label>
+          <button type="submit">Save Slack settings</button>
+        </form>
+        <form method="post" action="/admin/settings/jira" class="card stack">
+          <h2>Jira</h2>
+          <p>Configured: <strong class="{{#if jiraSettings.configured}}good{{else}}bad{{/if}}">{{#if jiraSettings.configured}}configured{{else}}needs config{{/if}}</strong></p>
+          <label>
+            <span>Base URL</span>
+            <input name="baseUrl" value="{{jiraSettings.baseUrl}}" />
+          </label>
+          <label>
+            <span>Project key</span>
+            <input name="projectKey" value="{{jiraSettings.projectKey}}" />
+          </label>
+          <label>
+            <span>User email</span>
+            <input name="userEmail" value="{{jiraSettings.userEmail}}" />
+          </label>
+          <label>
+            <span>API token</span>
+            <input name="apiToken" type="password" placeholder="{{#if jiraSettings.apiTokenConfigured}}configured{{else}}not set{{/if}}" />
+          </label>
+          <button type="submit">Save Jira settings</button>
+        </form>
+        <form method="post" action="/admin/settings/github" class="card stack">
+          <h2>GitHub</h2>
+          <p>Configured: <strong class="{{#if githubSettings.configured}}good{{else}}bad{{/if}}">{{#if githubSettings.configured}}configured{{else}}needs config{{/if}}</strong></p>
+          <label>
+            <span>Token</span>
+            <input name="token" type="password" placeholder="{{#if githubSettings.tokenConfigured}}configured{{else}}not set{{/if}}" />
+          </label>
+          <label>
+            <span>Owner or org</span>
+            <input name="owner" value="{{githubSettings.owner}}" placeholder="acme" />
+          </label>
+          <label>
+            <span>Default repository</span>
+            <input name="defaultRepository" value="{{githubSettings.defaultRepository}}" placeholder="work-os" />
+          </label>
+          <label>
+            <span>Default base branch</span>
+            <input name="defaultBaseBranch" value="{{githubSettings.defaultBaseBranch}}" placeholder="main" />
+          </label>
+          <label>
+            <span>Enable autonomous GitHub PR creation</span>
+            <select name="prCreationEnabled">
+              <option value="true" {{#if githubSettings.prCreationEnabled}}selected{{/if}}>enabled</option>
+              <option value="false" {{#unless githubSettings.prCreationEnabled}}selected{{/unless}}>disabled</option>
+            </select>
+          </label>
+          <label>
+            <span>Default new PRs to draft</span>
+            <select name="defaultDraftPullRequest">
+              <option value="true" {{#if githubSettings.defaultDraftPullRequest}}selected{{/if}}>yes</option>
+              <option value="false" {{#unless githubSettings.defaultDraftPullRequest}}selected{{/unless}}>no</option>
+            </select>
+          </label>
+          <button type="submit">Save GitHub settings</button>
+        </form>
+      </section>
+      <section class="grid">
+        <article class="card">
+          <div class="section-header">
+            <h2>Recent inbound events</h2>
+            <button class="secondary" hx-get="/admin/partials/events" hx-target="#events-partial" hx-swap="innerHTML">Refresh</button>
+          </div>
+          <div id="events-partial" hx-get="/admin/partials/events" hx-trigger="load, every 10s" hx-swap="innerHTML">
+            {{> events recentEvents=recentEvents}}
+          </div>
+        </article>
+        <article class="card">
+          <div class="section-header">
+            <h2>Recent workflow runs</h2>
+            <button class="secondary" hx-get="/admin/partials/runs" hx-target="#runs-partial" hx-swap="innerHTML">Refresh</button>
+          </div>
+          <div id="runs-partial" hx-get="/admin/partials/runs" hx-trigger="load, every 10s" hx-swap="innerHTML">
+            {{> runs recentRuns=recentRuns}}
+          </div>
+        </article>
+      </section>
+    </main>
+  </body>
+</html>

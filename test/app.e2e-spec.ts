@@ -1,20 +1,25 @@
 import { INestApplication } from '@nestjs/common';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { App } from 'supertest/types';
+import { configureApplication } from '../src/app.bootstrap';
 
 describe('AppController (e2e)', () => {
   let app: INestApplication<App>;
 
   beforeAll(async () => {
     process.env.SLACK_SKIP_SIGNATURE_VERIFICATION = 'true';
-    const { AppModule } = require('./../src/app.module') as typeof import('./../src/app.module');
+
+    const appModule =
+      require('./../src/app.module') as typeof import('./../src/app.module'); // eslint-disable-line @typescript-eslint/no-require-imports
 
     const moduleFixture = await Test.createTestingModule({
-      imports: [AppModule],
+      imports: [appModule.AppModule],
     }).compile();
 
-    app = moduleFixture.createNestApplication();
+    app = moduleFixture.createNestApplication<NestExpressApplication>();
+    configureApplication(app);
     await app.init();
   });
 
@@ -28,21 +33,30 @@ describe('AppController (e2e)', () => {
     return request(app.getHttpServer())
       .get('/health')
       .expect(200)
-      .expect({
-        status: 'ok',
-        environment: 'test',
-        modes: {
-          persistence: 'sqljs',
-          ai: 'stub',
-          selectedProvider: 'stub',
-          actionExecution: 'mock',
+      .expect(
+        ({
+          body,
+        }: {
+          body: {
+            status: string;
+            environment: string;
+            modes: Record<string, string>;
+            integrations: Record<string, boolean>;
+          };
+        }) => {
+          expect(body.status).toBe('ok');
+          expect(body.environment).toBe('test');
+          expect(body.modes).toEqual({
+            persistence: 'sqljs',
+            ai: 'stub',
+            selectedProvider: 'stub',
+            actionExecution: 'mock',
+          });
+          expect(typeof body.integrations.slack).toBe('boolean');
+          expect(typeof body.integrations.jira).toBe('boolean');
+          expect(typeof body.integrations.github).toBe('boolean');
         },
-        integrations: {
-          slack: false,
-          jira: false,
-          github: false,
-        },
-      });
+      );
   });
 
   it('/webhooks/slack/events (POST) returns the Slack challenge', () => {
@@ -92,11 +106,90 @@ describe('AppController (e2e)', () => {
         },
       })
       .expect(201)
-      .expect(({ body }) => {
-        expect(body.ok).toBe(true);
-        expect(body.status).toBe('skipped');
-        expect(body.eventId).toBe('jira-delivery-e2e');
-        expect(typeof body.workflowRunId).toBe('string');
+      .expect(
+        ({
+          body,
+        }: {
+          body: {
+            ok: boolean;
+            status: string;
+            eventId: string;
+            workflowRunId: string;
+          };
+        }) => {
+          expect(body.ok).toBe(true);
+          expect(body.status).toBe('skipped');
+          expect(body.eventId).toBe('jira-delivery-e2e');
+          expect(typeof body.workflowRunId).toBe('string');
+        },
+      );
+  });
+
+  it('/webhooks/github/events (POST) accepts a GitHub webhook', () => {
+    return request(app.getHttpServer())
+      .post('/webhooks/github/events')
+      .set('x-github-delivery', 'github-delivery-e2e')
+      .send({
+        eventType: 'issue_comment',
+        action: 'created',
+        repository: {
+          full_name: 'acme/work-os',
+          name: 'work-os',
+          owner: {
+            login: 'acme',
+          },
+        },
+        issue: {
+          number: 12,
+          title: 'Implement webhook support',
+          body: 'Need GitHub webhook ingress.',
+        },
+        comment: {
+          body: 'Please create a follow-up implementation plan.',
+        },
+        sender: {
+          login: 'pat',
+        },
+      })
+      .expect(201)
+      .expect(
+        ({
+          body,
+        }: {
+          body: {
+            ok: boolean;
+            status: string;
+            eventId: string;
+            workflowRunId: string;
+          };
+        }) => {
+          expect(body.ok).toBe(true);
+          expect(body.status).toBe('skipped');
+          expect(body.eventId).toBe('github-delivery-e2e');
+          expect(typeof body.workflowRunId).toBe('string');
+        },
+      );
+  });
+
+  it('/admin (GET) renders the Handlebars login page', () => {
+    return request(app.getHttpServer())
+      .get('/admin')
+      .expect(200)
+      .expect(({ text }: { text: string }) => {
+        expect(text).toContain('<form method="post" action="/admin/login"');
+        expect(text).toContain('<link rel="stylesheet" href="/admin.css"');
+      });
+  });
+
+  it('/admin/partials/events (GET) still serves HTMX partial HTML', () => {
+    return request(app.getHttpServer())
+      .get('/admin/partials/events')
+      .set('Cookie', ['work_os_admin_session=work-os-local-admin'])
+      .expect(200)
+      .expect(({ text }: { text: string }) => {
+        expect(text).toMatch(
+          /<ul class="list">|No inbound events have been received yet\./,
+        );
       });
   });
 });

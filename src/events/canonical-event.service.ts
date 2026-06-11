@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { GitHubWebhookDto } from '../integrations/github/dto/github-webhook.dto';
 import { JiraWebhookDto } from '../integrations/jira/dto/jira-webhook.dto';
 import { SlackEventEnvelopeDto } from '../integrations/slack/dto/slack-event-envelope.dto';
 import { CanonicalEvent } from './canonical-event';
@@ -12,13 +13,38 @@ export class CanonicalEventService {
 
     const issueId = payload.issue?.id ?? 'unknown-issue';
     const commentId = payload.comment?.id ?? 'no-comment';
-    const timestamp = payload.timestamp ?? payload.issue?.fields?.updated ?? 'no-timestamp';
+    const timestamp =
+      payload.timestamp ?? payload.issue?.fields?.updated ?? 'no-timestamp';
 
-    return [payload.webhookEvent, issueId, commentId, String(timestamp)].join(':');
+    return [payload.webhookEvent, issueId, commentId, String(timestamp)].join(
+      ':',
+    );
+  }
+
+  getGitHubSourceEventId(
+    payload: GitHubWebhookDto,
+    deliveryId?: string,
+  ): string {
+    if (deliveryId) {
+      return deliveryId;
+    }
+
+    const issueNumber =
+      payload.issue?.number ?? payload.pull_request?.number ?? 'na';
+    return [
+      payload.repository.full_name,
+      payload.eventType,
+      payload.action,
+      String(issueNumber),
+    ].join(':');
   }
 
   fromSlackEvent(payload: SlackEventEnvelopeDto): CanonicalEvent | null {
-    if (payload.type !== 'event_callback' || !payload.event || !payload.event_id) {
+    if (
+      payload.type !== 'event_callback' ||
+      !payload.event ||
+      !payload.event_id
+    ) {
       return null;
     }
 
@@ -53,14 +79,22 @@ export class CanonicalEventService {
     };
   }
 
-  fromJiraEvent(payload: JiraWebhookDto, deliveryId?: string): CanonicalEvent | null {
+  fromJiraEvent(
+    payload: JiraWebhookDto,
+    deliveryId?: string,
+  ): CanonicalEvent | null {
     if (!this.isSupportedJiraEvent(payload) || !payload.issue?.id) {
       return null;
     }
 
     const sourceEventId = this.getJiraSourceEventId(payload, deliveryId);
-    const summary = payload.issue.fields?.summary?.trim() ?? payload.issue.key ?? 'Jira event';
-    const issueDescription = this.extractText(payload.issue.fields?.description);
+    const summary =
+      payload.issue.fields?.summary?.trim() ??
+      payload.issue.key ??
+      'Jira event';
+    const issueDescription = this.extractText(
+      payload.issue.fields?.description,
+    );
     const commentText = this.extractText(payload.comment?.body);
     const text = [summary, issueDescription, commentText]
       .filter((value) => value.length > 0)
@@ -85,6 +119,43 @@ export class CanonicalEventService {
     };
   }
 
+  fromGitHubEvent(
+    payload: GitHubWebhookDto,
+    deliveryId?: string,
+  ): CanonicalEvent | null {
+    if (!this.isSupportedGitHubEvent(payload)) {
+      return null;
+    }
+
+    const sourceEventId = this.getGitHubSourceEventId(payload, deliveryId);
+    const lines = [
+      payload.pull_request?.title ?? payload.issue?.title ?? '',
+      payload.pull_request?.body ?? payload.issue?.body ?? '',
+      payload.comment?.body ?? '',
+    ]
+      .map((value) => value.trim())
+      .filter(Boolean);
+    const text =
+      lines.join('\n\n') ||
+      `${payload.eventType} ${payload.action} in ${payload.repository.full_name}`;
+
+    return {
+      source: 'github',
+      sourceEventId,
+      eventType: payload.eventType,
+      idempotencyKey: `github:${sourceEventId}`,
+      correlationId: payload.repository.full_name,
+      receivedAt: new Date().toISOString(),
+      actor: {
+        id: payload.sender?.login,
+      },
+      content: {
+        text,
+      },
+      raw: payload as unknown as Record<string, unknown>,
+    };
+  }
+
   private isSupportedSlackEvent(payload: SlackEventEnvelopeDto) {
     if (!payload.event) {
       return false;
@@ -98,13 +169,33 @@ export class CanonicalEventService {
       return true;
     }
 
-    return payload.event.type === 'message' && payload.event.channel_type === 'im';
+    return (
+      payload.event.type === 'message' && payload.event.channel_type === 'im'
+    );
   }
 
   private isSupportedJiraEvent(payload: JiraWebhookDto) {
-    return ['jira:issue_created', 'jira:issue_updated', 'comment_created'].includes(
-      payload.webhookEvent,
-    );
+    return [
+      'jira:issue_created',
+      'jira:issue_updated',
+      'comment_created',
+    ].includes(payload.webhookEvent);
+  }
+
+  private isSupportedGitHubEvent(payload: GitHubWebhookDto) {
+    if (payload.eventType === 'issues') {
+      return ['opened', 'edited', 'reopened'].includes(payload.action);
+    }
+
+    if (payload.eventType === 'issue_comment') {
+      return payload.action === 'created';
+    }
+
+    if (payload.eventType === 'pull_request') {
+      return ['opened', 'reopened', 'edited'].includes(payload.action);
+    }
+
+    return false;
   }
 
   private extractText(value: unknown): string {
@@ -113,7 +204,10 @@ export class CanonicalEventService {
     }
 
     if (Array.isArray(value)) {
-      return value.map((entry) => this.extractText(entry)).filter(Boolean).join(' ');
+      return value
+        .map((entry) => this.extractText(entry))
+        .filter(Boolean)
+        .join(' ');
     }
 
     if (!value || typeof value !== 'object') {
