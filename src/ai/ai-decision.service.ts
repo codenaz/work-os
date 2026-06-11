@@ -1,5 +1,9 @@
 import { Injectable, InternalServerErrorException } from '@nestjs/common';
-import { HumanMessage, isAIMessageChunk, SystemMessage } from '@langchain/core/messages';
+import {
+  HumanMessage,
+  isAIMessageChunk,
+  SystemMessage,
+} from '@langchain/core/messages';
 import { z } from 'zod';
 import { CanonicalEvent } from '../events/canonical-event';
 import { SettingsService } from '../settings/settings.service';
@@ -24,6 +28,11 @@ const workflowDecisionSchema = z.object({
   rationale: z.string().min(1),
   confidence: z.enum(['low', 'medium', 'high']),
 });
+
+const MIN_GITHUB_PR_CONTEXT_LENGTH = 40;
+const FALLBACK_GITHUB_PR_CONTEXT_LENGTH = 60;
+const JIRA_SUMMARY_MAX_LENGTH = 120;
+const GITHUB_TITLE_MAX_LENGTH = 80;
 
 @Injectable()
 export class AiDecisionService {
@@ -157,11 +166,18 @@ export class AiDecisionService {
     decision: WorkflowDecision,
   ): WorkflowDecision {
     if (!isWorkflowActionSupported(decision.action, event)) {
-      return this.toSkipDecision(event, decision, `${decision.action} is not supported for ${event.source} events under the current workflow policy.`);
+      return this.toSkipDecision(
+        event,
+        decision,
+        `${decision.action} is not supported for ${event.source} events under the current workflow policy.`,
+      );
     }
 
     if (decision.action === 'create_github_pr') {
-      const hasEnoughContext = this.hasEnoughContextForGitHubPr(event, decision);
+      const hasEnoughContext = this.hasEnoughContextForGitHubPr(
+        event,
+        decision,
+      );
       if (!hasEnoughContext) {
         return this.toSkipDecision(
           event,
@@ -183,20 +199,24 @@ export class AiDecisionService {
     }
 
     const text = event.content.text.trim();
-    if (text.length < 40) {
+    if (text.length < MIN_GITHUB_PR_CONTEXT_LENGTH) {
       return false;
     }
 
     const hasActionVerb =
       /(implement|add|update|fix|refactor|migrate|create|build)/i.test(text);
-    const hasScopeMarker = /\b(api|controller|service|module|test|ui|dashboard|webhook|workflow|settings|github|jira|slack)\b/i.test(
-      text,
-    );
+    const hasScopeMarker =
+      /\b(api|controller|service|module|test|ui|dashboard|webhook|workflow|settings|github|jira|slack)\b/i.test(
+        text,
+      );
 
     return (
       hasActionVerb &&
       hasScopeMarker &&
-      Boolean(decision.githubPrTitle?.trim() || text.length >= 60)
+      Boolean(
+        decision.githubPrTitle?.trim() ||
+        text.length >= FALLBACK_GITHUB_PR_CONTEXT_LENGTH,
+      )
     );
   }
 
@@ -273,21 +293,18 @@ export class AiDecisionService {
   }
 
   private summarizeForJira(text: string) {
-    const summary = text
-      .replace(/<[^>]+>/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
+    const summary = this.normalizePlainText(text);
 
-    return summary.slice(0, 120) || 'Slack follow-up';
+    return summary.slice(0, JIRA_SUMMARY_MAX_LENGTH) || 'Slack follow-up';
   }
 
   private summarizeForGitHub(text: string) {
-    const summary = text
-      .replace(/<[^>]+>/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim();
+    const summary = this.normalizePlainText(text);
 
-    return summary.slice(0, 80) || 'Work OS automated change request';
+    return (
+      summary.slice(0, GITHUB_TITLE_MAX_LENGTH) ||
+      'Work OS automated change request'
+    );
   }
 
   private buildGitHubBody(text: string) {
@@ -300,5 +317,13 @@ export class AiDecisionService {
       '- [ ] Implement bounded code changes',
       '- [ ] Validate with lint, tests, and build',
     ].join('\n');
+  }
+
+  private normalizePlainText(text: string) {
+    return text
+      .replaceAll('<', ' ')
+      .replaceAll('>', ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
   }
 }

@@ -152,14 +152,14 @@ export class SettingsService {
         openAiCredential?.metadata?.model ?? this.appConfigService.openAiModel,
       openAiApiKeyConfigured: Boolean(
         openAiCredential?.secretData?.apiKey ??
-          this.appConfigService.openAiApiKey,
+        this.appConfigService.openAiApiKey,
       ),
       anthropicModel:
         anthropicCredential?.metadata?.model ??
         this.appConfigService.anthropicModel,
       anthropicApiKeyConfigured: Boolean(
         anthropicCredential?.secretData?.apiKey ??
-          this.appConfigService.anthropicApiKey,
+        this.appConfigService.anthropicApiKey,
       ),
     };
   }

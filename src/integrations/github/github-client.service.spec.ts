@@ -16,6 +16,8 @@ describe('GitHubClientService', () => {
     expect(result.mode).toBe('mock');
     expect(result.repository).toBe('work-os');
     expect(result.branch).toContain('work-os/mock-pr-');
-    expect(result.pullRequestUrl).toContain('https://github.com/mock-org/work-os/pull/');
+    expect(result.pullRequestUrl).toContain(
+      'https://github.com/mock-org/work-os/pull/',
+    );
   });
 });

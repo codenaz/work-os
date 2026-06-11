@@ -162,7 +162,9 @@ export class AdminService {
     );
 
     if (dto.prCreationEnabled !== undefined) {
-      await this.settingsService.setGitHubPrCreationEnabled(dto.prCreationEnabled);
+      await this.settingsService.setGitHubPrCreationEnabled(
+        dto.prCreationEnabled,
+      );
     }
 
     if (dto.defaultDraftPr !== undefined) {
@@ -186,7 +188,11 @@ export class AdminService {
         : 'needs-config'
       : 'disabled';
 
-    await this.settingsService.upsertIntegrationConnection('github', status, {});
+    await this.settingsService.upsertIntegrationConnection(
+      'github',
+      status,
+      {},
+    );
   }
 
   async getRecentWorkflowRuns(limit = 10) {

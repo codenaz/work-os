@@ -74,7 +74,9 @@ export class CanonicalEventService {
       payload.issue.fields?.summary?.trim() ??
       payload.issue.key ??
       'Jira event';
-    const issueDescription = this.extractText(payload.issue.fields?.description);
+    const issueDescription = this.extractText(
+      payload.issue.fields?.description,
+    );
     const commentText = this.extractText(payload.comment?.body);
     const text = [summary, issueDescription, commentText]
       .filter((value) => value.length > 0)
@@ -115,7 +117,8 @@ export class CanonicalEventService {
       return null;
     }
 
-    const actor = subject.user?.login ?? this.extractSenderLogin(payload.sender);
+    const actor =
+      subject.user?.login ?? this.extractSenderLogin(payload.sender);
     const body = (subject.body ?? '').trim();
     const text = [subject.title.trim(), body].filter(Boolean).join('\n\n');
 

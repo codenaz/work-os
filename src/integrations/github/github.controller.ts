@@ -77,7 +77,8 @@ export class GitHubController {
         ok: true,
         status: 'failed',
         eventId: sourceEventId,
-        message: error instanceof Error ? error.message : 'Unknown workflow error',
+        message:
+          error instanceof Error ? error.message : 'Unknown workflow error',
       };
     }
   }
