@@ -28,7 +28,9 @@ export class SlackClientService {
     const slackSettings = await this.settingsService.getSlackSettings();
 
     if (!slackSettings.botToken) {
-      throw new ServiceUnavailableException('Slack bot token is not configured');
+      throw new ServiceUnavailableException(
+        'Slack bot token is not configured',
+      );
     }
 
     const response = await fetch('https://slack.com/api/chat.postMessage', {

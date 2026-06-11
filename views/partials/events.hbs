@@ -1,0 +1,12 @@
+{{#if events.length}}
+  <ul class="list">
+    {{#each events}}
+      <li>
+        <strong>{{this.source}}</strong> / {{this.eventType}} - {{this.status}}
+        <div class="muted">{{this.externalEventId}}</div>
+      </li>
+    {{/each}}
+  </ul>
+{{else}}
+  <p class="muted">No inbound events have been received yet.</p>
+{{/if}}

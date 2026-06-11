@@ -1,3 +1,4 @@
+import { GitHubWebhookDto } from '../integrations/github/dto/github-webhook.dto';
 import { JiraWebhookDto } from '../integrations/jira/dto/jira-webhook.dto';
 import { SlackEventEnvelopeDto } from '../integrations/slack/dto/slack-event-envelope.dto';
 import { CanonicalEventService } from './canonical-event.service';
@@ -141,6 +142,42 @@ describe('CanonicalEventService', () => {
             },
           },
         },
+      },
+    });
+  });
+
+  it('normalizes supported GitHub pull request events', () => {
+    const event = service.fromGitHubEvent(
+      {
+        action: 'opened',
+        pull_request: {
+          number: 42,
+          title: 'Add webhook retry metrics',
+          body: 'Tracks retry counts for failed webhook deliveries.',
+          html_url: 'https://github.com/acme/work-os/pull/42',
+          user: {
+            login: 'codenaz',
+          },
+        },
+        repository: {
+          full_name: 'acme/work-os',
+        },
+      } satisfies GitHubWebhookDto,
+      'pull_request',
+      'gh-delivery-1',
+    );
+
+    expect(event).toMatchObject({
+      source: 'github',
+      sourceEventId: 'gh-delivery-1',
+      eventType: 'pull_request.opened',
+      idempotencyKey: 'github:gh-delivery-1',
+      correlationId: 'pull_request:42',
+      actor: {
+        id: 'codenaz',
+      },
+      content: {
+        text: 'Add webhook retry metrics\n\nTracks retry counts for failed webhook deliveries.',
       },
     });
   });

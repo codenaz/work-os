@@ -1,5 +1,6 @@
 import { Injectable, InternalServerErrorException } from '@nestjs/common';
 import { CanonicalEvent } from '../events/canonical-event';
+import { GitHubClientService } from '../integrations/github/github-client.service';
 import { JiraClientService } from '../integrations/jira/jira-client.service';
 import { SlackClientService } from '../integrations/slack/slack-client.service';
 import { WorkflowDecision } from './ai.types';
@@ -9,6 +10,7 @@ export class InternalToolExecutorService {
   constructor(
     private readonly slackClientService: SlackClientService,
     private readonly jiraClientService: JiraClientService,
+    private readonly githubClientService: GitHubClientService,
   ) {}
 
   async execute(decision: WorkflowDecision, event: CanonicalEvent) {
@@ -43,22 +45,52 @@ export class InternalToolExecutorService {
       };
     }
 
-    const jiraIssue = await this.jiraClientService.createIssue({
-      summary: decision.jiraSummary ?? 'Slack follow-up',
-      description: decision.jiraDescription ?? event.content.text,
+    if (decision.action === 'create_jira_ticket') {
+      const jiraIssue = await this.jiraClientService.createIssue({
+        summary: decision.jiraSummary ?? 'Slack follow-up',
+        description: decision.jiraDescription ?? event.content.text,
+      });
+
+      const slackResponse = channelId
+        ? await this.slackClientService.sendMessage({
+            channelId,
+            text: `${decision.responseText} Jira issue: ${jiraIssue.issueKey}`,
+            threadTs: event.conversation?.threadTs,
+          })
+        : null;
+
+      return {
+        output: {
+          jiraIssue,
+          ...(slackResponse ? { slackResponse } : {}),
+        },
+      };
+    }
+
+    const githubPullRequest = await this.githubClientService.createPullRequest({
+      title:
+        decision.githubPrTitle ??
+        event.content.text.slice(0, 80) ??
+        'Work OS automated change request',
+      body:
+        decision.githubPrBody ??
+        `Automated request captured from ${event.source} event ${event.sourceEventId}.`,
+      repository: decision.githubRepository,
+      baseBranch: decision.githubBaseBranch,
+      draft: decision.githubDraft,
     });
 
     const slackResponse = channelId
       ? await this.slackClientService.sendMessage({
           channelId,
-          text: `${decision.responseText} Jira issue: ${jiraIssue.issueKey}`,
+          text: `${decision.responseText} PR: ${githubPullRequest.pullRequestUrl}`,
           threadTs: event.conversation?.threadTs,
         })
       : null;
 
     return {
       output: {
-        jiraIssue,
+        githubPullRequest,
         ...(slackResponse ? { slackResponse } : {}),
       },
     };

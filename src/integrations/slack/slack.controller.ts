@@ -81,7 +81,8 @@ export class SlackController {
         ok: true,
         status: 'failed',
         eventId,
-        message: error instanceof Error ? error.message : 'Unknown workflow error',
+        message:
+          error instanceof Error ? error.message : 'Unknown workflow error',
       };
     }
   }

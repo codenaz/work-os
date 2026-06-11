@@ -61,6 +61,11 @@ export class AdminService {
       githubSettings: {
         configured: githubSettings.configured,
         tokenConfigured: Boolean(githubSettings.token),
+        owner: githubSettings.owner ?? '',
+        defaultRepository: githubSettings.defaultRepository ?? '',
+        defaultBaseBranch: githubSettings.defaultBaseBranch ?? 'main',
+        prCreationEnabled: githubSettings.prCreationEnabled,
+        defaultDraftPr: githubSettings.defaultDraftPr,
       },
       recentEvents,
       recentRuns,
@@ -155,10 +160,37 @@ export class AdminService {
         token: dto.token,
       }),
     );
-    const githubSettings = await this.settingsService.getGitHubSettings();
+
+    if (dto.prCreationEnabled !== undefined) {
+      await this.settingsService.setGitHubPrCreationEnabled(
+        dto.prCreationEnabled,
+      );
+    }
+
+    if (dto.defaultDraftPr !== undefined) {
+      await this.settingsService.setGitHubDefaultDraftPr(dto.defaultDraftPr);
+    }
+
     await this.settingsService.upsertIntegrationConnection(
       'github',
-      githubSettings.configured ? 'connected' : 'needs-config',
+      'needs-config',
+      this.filterEmpty({
+        owner: dto.owner,
+        defaultRepository: dto.defaultRepository,
+        defaultBaseBranch: dto.defaultBaseBranch,
+      }),
+    );
+
+    const githubSettings = await this.settingsService.getGitHubSettings();
+    const status = githubSettings.prCreationEnabled
+      ? githubSettings.configured
+        ? 'connected'
+        : 'needs-config'
+      : 'disabled';
+
+    await this.settingsService.upsertIntegrationConnection(
+      'github',
+      status,
       {},
     );
   }

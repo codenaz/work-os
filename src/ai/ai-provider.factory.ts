@@ -15,7 +15,8 @@ export class AiProviderFactory {
     }
 
     if (aiSettings.selectedProvider === 'openai') {
-      const credential = await this.settingsService.getProviderCredential('openai');
+      const credential =
+        await this.settingsService.getProviderCredential('openai');
       const apiKey = credential?.secretData?.apiKey;
 
       if (!apiKey) {
