@@ -4,6 +4,7 @@ import { SupportedAiProvider } from '../settings/settings.service';
 export type WorkflowAction =
   | 'respond_in_slack'
   | 'create_jira_ticket'
+  | 'create_github_pr'
   | 'skip_event';
 
 export interface WorkflowActionPolicy {
@@ -21,6 +22,10 @@ export const workflowActionPolicies: Record<
   },
   create_jira_ticket: {
     supportedSources: ['slack', 'github'],
+    requiresConversationTarget: false,
+  },
+  create_github_pr: {
+    supportedSources: ['slack', 'jira'],
     requiresConversationTarget: false,
   },
   skip_event: {
@@ -51,6 +56,11 @@ export interface WorkflowDecision {
   responseText: string;
   jiraSummary?: string;
   jiraDescription?: string;
+  githubPrTitle?: string;
+  githubPrBody?: string;
+  githubRepository?: string;
+  githubBaseBranch?: string;
+  githubDraft?: boolean;
   rationale: string;
   confidence: 'low' | 'medium' | 'high';
   provider: SupportedAiProvider;

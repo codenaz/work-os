@@ -21,6 +21,7 @@ export class AppService {
         admin: '/admin',
         slackWebhook: '/webhooks/slack/events',
         jiraWebhook: '/webhooks/jira/events',
+        githubWebhook: '/webhooks/github/events',
       },
     };
   }

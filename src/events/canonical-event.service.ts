@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { GitHubWebhookDto } from '../integrations/github/dto/github-webhook.dto';
 import { JiraWebhookDto } from '../integrations/jira/dto/jira-webhook.dto';
 import { SlackEventEnvelopeDto } from '../integrations/slack/dto/slack-event-envelope.dto';
 import { CanonicalEvent } from './canonical-event';
@@ -73,9 +74,7 @@ export class CanonicalEventService {
       payload.issue.fields?.summary?.trim() ??
       payload.issue.key ??
       'Jira event';
-    const issueDescription = this.extractText(
-      payload.issue.fields?.description,
-    );
+    const issueDescription = this.extractText(payload.issue.fields?.description);
     const commentText = this.extractText(payload.comment?.body);
     const text = [summary, issueDescription, commentText]
       .filter((value) => value.length > 0)
@@ -95,6 +94,44 @@ export class CanonicalEventService {
       },
       content: {
         text: text || summary,
+      },
+      raw: payload as unknown as Record<string, unknown>,
+    };
+  }
+
+  fromGitHubEvent(
+    payload: GitHubWebhookDto,
+    eventType: string | undefined,
+    sourceEventId: string,
+  ): CanonicalEvent | null {
+    if (!eventType || !this.isSupportedGitHubEvent(eventType, payload.action)) {
+      return null;
+    }
+
+    const subject =
+      eventType === 'pull_request' ? payload.pull_request : payload.issue;
+
+    if (!subject?.title) {
+      return null;
+    }
+
+    const actor = subject.user?.login ?? this.extractSenderLogin(payload.sender);
+    const body = (subject.body ?? '').trim();
+    const text = [subject.title.trim(), body].filter(Boolean).join('\n\n');
+
+    return {
+      source: 'github',
+      sourceEventId,
+      eventType: `${eventType}.${payload.action}`,
+      idempotencyKey: `github:${sourceEventId}`,
+      correlationId: `${eventType}:${String(subject.number ?? sourceEventId)}`,
+      receivedAt: new Date().toISOString(),
+      actor: {
+        id: actor,
+        displayName: actor,
+      },
+      content: {
+        text,
       },
       raw: payload as unknown as Record<string, unknown>,
     };
@@ -124,6 +161,21 @@ export class CanonicalEventService {
       'jira:issue_updated',
       'comment_created',
     ].includes(payload.webhookEvent);
+  }
+
+  private isSupportedGitHubEvent(eventType: string, action: string) {
+    return (
+      ['pull_request', 'issues'].includes(eventType) &&
+      ['opened', 'edited', 'reopened'].includes(action)
+    );
+  }
+
+  private extractSenderLogin(sender: Record<string, unknown> | undefined) {
+    if (!sender || typeof sender.login !== 'string') {
+      return undefined;
+    }
+
+    return sender.login;
   }
 
   private extractText(value: unknown): string {

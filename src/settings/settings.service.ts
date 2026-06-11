@@ -34,6 +34,11 @@ export interface JiraSettings {
 
 export interface GitHubSettings {
   token?: string;
+  owner?: string;
+  defaultRepository?: string;
+  defaultBaseBranch?: string;
+  prCreationEnabled: boolean;
+  defaultDraftPr: boolean;
   configured: boolean;
 }
 
@@ -147,14 +152,14 @@ export class SettingsService {
         openAiCredential?.metadata?.model ?? this.appConfigService.openAiModel,
       openAiApiKeyConfigured: Boolean(
         openAiCredential?.secretData?.apiKey ??
-        this.appConfigService.openAiApiKey,
+          this.appConfigService.openAiApiKey,
       ),
       anthropicModel:
         anthropicCredential?.metadata?.model ??
         this.appConfigService.anthropicModel,
       anthropicApiKeyConfigured: Boolean(
         anthropicCredential?.secretData?.apiKey ??
-        this.appConfigService.anthropicApiKey,
+          this.appConfigService.anthropicApiKey,
       ),
     };
   }
@@ -201,12 +206,50 @@ export class SettingsService {
 
   async getGitHubSettings(): Promise<GitHubSettings> {
     const githubCredential = await this.getProviderCredential('github');
+    const githubConnection = await this.getIntegrationConnection('github');
     const token =
       githubCredential?.secretData?.token ?? this.appConfigService.githubToken;
+    const owner =
+      githubConnection?.config?.owner ?? this.appConfigService.githubOwner;
+    const defaultRepository =
+      githubConnection?.config?.defaultRepository ??
+      this.appConfigService.githubDefaultRepository;
+    const defaultBaseBranch =
+      githubConnection?.config?.defaultBaseBranch ??
+      this.appConfigService.githubDefaultBaseBranch;
+
+    const prCreationEnabledSetting = await this.getWorkspaceSetting(
+      'githubPrCreationEnabled',
+    );
+    const defaultDraftPrSetting = await this.getWorkspaceSetting(
+      'githubDefaultDraftPr',
+    );
+
+    const prCreationEnabled =
+      prCreationEnabledSetting === undefined
+        ? this.appConfigService.githubPrCreationEnabled
+        : prCreationEnabledSetting === 'true';
+    const defaultDraftPr =
+      defaultDraftPrSetting === undefined
+        ? this.appConfigService.githubDefaultDraftPr
+        : defaultDraftPrSetting === 'true';
 
     return {
       token,
-      configured: Boolean(token),
+      owner,
+      defaultRepository,
+      defaultBaseBranch,
+      prCreationEnabled,
+      defaultDraftPr,
+      configured: Boolean(token && owner && defaultRepository),
     };
+  }
+
+  async setGitHubPrCreationEnabled(enabled: boolean) {
+    await this.setWorkspaceSetting('githubPrCreationEnabled', String(enabled));
+  }
+
+  async setGitHubDefaultDraftPr(enabled: boolean) {
+    await this.setWorkspaceSetting('githubDefaultDraftPr', String(enabled));
   }
 }

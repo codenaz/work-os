@@ -1,0 +1,12 @@
+{{#if runs.length}}
+  <ul class="list">
+    {{#each runs}}
+      <li>
+        <strong>{{this.status}}</strong> - {{#if this.action}}{{this.action}}{{else}}pending{{/if}}
+        <div class="muted">{{this.inputSummary}}</div>
+      </li>
+    {{/each}}
+  </ul>
+{{else}}
+  <p class="muted">No workflow runs have been executed yet.</p>
+{{/if}}
