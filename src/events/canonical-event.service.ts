@@ -12,13 +12,20 @@ export class CanonicalEventService {
 
     const issueId = payload.issue?.id ?? 'unknown-issue';
     const commentId = payload.comment?.id ?? 'no-comment';
-    const timestamp = payload.timestamp ?? payload.issue?.fields?.updated ?? 'no-timestamp';
+    const timestamp =
+      payload.timestamp ?? payload.issue?.fields?.updated ?? 'no-timestamp';
 
-    return [payload.webhookEvent, issueId, commentId, String(timestamp)].join(':');
+    return [payload.webhookEvent, issueId, commentId, String(timestamp)].join(
+      ':',
+    );
   }
 
   fromSlackEvent(payload: SlackEventEnvelopeDto): CanonicalEvent | null {
-    if (payload.type !== 'event_callback' || !payload.event || !payload.event_id) {
+    if (
+      payload.type !== 'event_callback' ||
+      !payload.event ||
+      !payload.event_id
+    ) {
       return null;
     }
 
@@ -53,14 +60,22 @@ export class CanonicalEventService {
     };
   }
 
-  fromJiraEvent(payload: JiraWebhookDto, deliveryId?: string): CanonicalEvent | null {
+  fromJiraEvent(
+    payload: JiraWebhookDto,
+    deliveryId?: string,
+  ): CanonicalEvent | null {
     if (!this.isSupportedJiraEvent(payload) || !payload.issue?.id) {
       return null;
     }
 
     const sourceEventId = this.getJiraSourceEventId(payload, deliveryId);
-    const summary = payload.issue.fields?.summary?.trim() ?? payload.issue.key ?? 'Jira event';
-    const issueDescription = this.extractText(payload.issue.fields?.description);
+    const summary =
+      payload.issue.fields?.summary?.trim() ??
+      payload.issue.key ??
+      'Jira event';
+    const issueDescription = this.extractText(
+      payload.issue.fields?.description,
+    );
     const commentText = this.extractText(payload.comment?.body);
     const text = [summary, issueDescription, commentText]
       .filter((value) => value.length > 0)
@@ -98,13 +113,17 @@ export class CanonicalEventService {
       return true;
     }
 
-    return payload.event.type === 'message' && payload.event.channel_type === 'im';
+    return (
+      payload.event.type === 'message' && payload.event.channel_type === 'im'
+    );
   }
 
   private isSupportedJiraEvent(payload: JiraWebhookDto) {
-    return ['jira:issue_created', 'jira:issue_updated', 'comment_created'].includes(
-      payload.webhookEvent,
-    );
+    return [
+      'jira:issue_created',
+      'jira:issue_updated',
+      'comment_created',
+    ].includes(payload.webhookEvent);
   }
 
   private extractText(value: unknown): string {
@@ -113,7 +132,10 @@ export class CanonicalEventService {
     }
 
     if (Array.isArray(value)) {
-      return value.map((entry) => this.extractText(entry)).filter(Boolean).join(' ');
+      return value
+        .map((entry) => this.extractText(entry))
+        .filter(Boolean)
+        .join(' ');
     }
 
     if (!value || typeof value !== 'object') {

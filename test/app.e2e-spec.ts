@@ -8,7 +8,8 @@ describe('AppController (e2e)', () => {
 
   beforeAll(async () => {
     process.env.SLACK_SKIP_SIGNATURE_VERIFICATION = 'true';
-    const { AppModule } = require('./../src/app.module') as typeof import('./../src/app.module');
+    const { AppModule } =
+      require('./../src/app.module') as typeof import('./../src/app.module');
 
     const moduleFixture = await Test.createTestingModule({
       imports: [AppModule],

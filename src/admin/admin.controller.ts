@@ -46,7 +46,10 @@ export class AdminController {
 
   @Post('login')
   @Redirect('/admin')
-  login(@Body() body: AdminLoginDto, @Res({ passthrough: true }) response: Response) {
+  login(
+    @Body() body: AdminLoginDto,
+    @Res({ passthrough: true }) response: Response,
+  ) {
     if (body.token !== this.appConfigService.adminToken) {
       return {
         url: '/admin?error=Invalid%20admin%20token',
@@ -78,7 +81,9 @@ export class AdminController {
   @UseGuards(AdminSessionGuard)
   async getEventsPartial(@Res() response: Response) {
     const dashboard = await this.adminService.getDashboardData();
-    return response.type('html').send(renderEventsPartial(dashboard.recentEvents));
+    return response
+      .type('html')
+      .send(renderEventsPartial(dashboard.recentEvents));
   }
 
   @Get('partials/runs')
@@ -139,7 +144,10 @@ export class AdminController {
   }
 
   private isAuthenticated(request: Request) {
-    return request.cookies?.work_os_admin_session === this.appConfigService.adminToken;
+    return (
+      request.cookies?.work_os_admin_session ===
+      this.appConfigService.adminToken
+    );
   }
 }
 
@@ -246,7 +254,9 @@ function renderDashboardPage(
           <label>
             <span>OpenAI API key</span>
             <input name="openAiApiKey" type="password" placeholder="${
-              dashboard.aiSettings.openAiApiKeyConfigured ? 'configured' : 'not set'
+              dashboard.aiSettings.openAiApiKeyConfigured
+                ? 'configured'
+                : 'not set'
             }" />
           </label>
           <label>
@@ -271,7 +281,9 @@ function renderDashboardPage(
           <label>
             <span>Bot token</span>
             <input name="botToken" type="password" placeholder="${
-              dashboard.slackSettings.botTokenConfigured ? 'configured' : 'not set'
+              dashboard.slackSettings.botTokenConfigured
+                ? 'configured'
+                : 'not set'
             }" />
           </label>
           <label>
@@ -306,7 +318,9 @@ function renderDashboardPage(
           <label>
             <span>API token</span>
             <input name="apiToken" type="password" placeholder="${
-              dashboard.jiraSettings.apiTokenConfigured ? 'configured' : 'not set'
+              dashboard.jiraSettings.apiTokenConfigured
+                ? 'configured'
+                : 'not set'
             }" />
           </label>
           <button type="submit">Save Jira settings</button>
@@ -317,7 +331,9 @@ function renderDashboardPage(
           <label>
             <span>Token</span>
             <input name="token" type="password" placeholder="${
-              dashboard.githubSettings.tokenConfigured ? 'configured' : 'not set'
+              dashboard.githubSettings.tokenConfigured
+                ? 'configured'
+                : 'not set'
             }" />
           </label>
           <button type="submit">Save GitHub settings</button>
@@ -411,7 +427,9 @@ function renderRunsPartial(
 }
 
 function renderStatus(value: boolean) {
-  return value ? '<strong class="good">configured</strong>' : '<strong class="bad">needs config</strong>';
+  return value
+    ? '<strong class="good">configured</strong>'
+    : '<strong class="bad">needs config</strong>';
 }
 
 function renderSelectedOption(value: string, selectedValue: string) {

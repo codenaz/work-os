@@ -86,7 +86,9 @@ export class WorkflowOrchestratorService {
       return completedRun;
     } catch (error) {
       const message =
-        error instanceof Error ? error.message : 'Unknown workflow execution error';
+        error instanceof Error
+          ? error.message
+          : 'Unknown workflow execution error';
 
       await this.workflowRunsRepository.save({
         ...workflowRun,

@@ -11,7 +11,10 @@ export interface WorkflowActionPolicy {
   requiresConversationTarget: boolean;
 }
 
-export const workflowActionPolicies: Record<WorkflowAction, WorkflowActionPolicy> = {
+export const workflowActionPolicies: Record<
+  WorkflowAction,
+  WorkflowActionPolicy
+> = {
   respond_in_slack: {
     supportedSources: ['slack'],
     requiresConversationTarget: true,

@@ -34,7 +34,8 @@ export class AiDecisionService {
       return this.createStubDecision(event);
     }
 
-    const configuredModel = await this.aiProviderFactory.createConfiguredModel();
+    const configuredModel =
+      await this.aiProviderFactory.createConfiguredModel();
 
     if (!configuredModel) {
       return this.createStubDecision(event);
@@ -53,7 +54,9 @@ export class AiDecisionService {
       ),
     ]);
     const rawText = this.extractText(completion.content);
-    const parsed = workflowDecisionSchema.parse(this.extractJsonObject(rawText));
+    const parsed = workflowDecisionSchema.parse(
+      this.extractJsonObject(rawText),
+    );
 
     return this.enforceActionPolicy(event, {
       ...parsed,
@@ -77,9 +80,8 @@ export class AiDecisionService {
     }
 
     const normalizedText = event.content.text.toLowerCase();
-    const shouldCreateTicket = /(bug|issue|ticket|todo|follow up|follow-up|fix)/.test(
-      normalizedText,
-    );
+    const shouldCreateTicket =
+      /(bug|issue|ticket|todo|follow up|follow-up|fix)/.test(normalizedText);
 
     if (shouldCreateTicket) {
       return this.enforceActionPolicy(event, {

@@ -10,14 +10,19 @@ export class HealthService {
   ) {}
 
   async getHealthSummary() {
-    const [aiSettings, slackSettings, jiraSettings, githubSettings, actionMode] =
-      await Promise.all([
-        this.settingsService.getAiSettings(),
-        this.settingsService.getSlackSettings(),
-        this.settingsService.getJiraSettings(),
-        this.settingsService.getGitHubSettings(),
-        this.settingsService.getActionExecutionMode(),
-      ]);
+    const [
+      aiSettings,
+      slackSettings,
+      jiraSettings,
+      githubSettings,
+      actionMode,
+    ] = await Promise.all([
+      this.settingsService.getAiSettings(),
+      this.settingsService.getSlackSettings(),
+      this.settingsService.getJiraSettings(),
+      this.settingsService.getGitHubSettings(),
+      this.settingsService.getActionExecutionMode(),
+    ]);
 
     return {
       status: 'ok',

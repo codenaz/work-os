@@ -113,8 +113,10 @@ export class SettingsService {
 
   async getActionExecutionMode(): Promise<ActionExecutionMode> {
     const persistedMode = await this.getWorkspaceSetting('actionExecutionMode');
-    return (persistedMode as ActionExecutionMode | undefined) ??
-      this.appConfigService.actionExecutionMode;
+    return (
+      (persistedMode as ActionExecutionMode | undefined) ??
+      this.appConfigService.actionExecutionMode
+    );
   }
 
   async setActionExecutionMode(mode: ActionExecutionMode) {
@@ -122,9 +124,12 @@ export class SettingsService {
   }
 
   async getSelectedAiProvider(): Promise<SupportedAiProvider> {
-    const persistedProvider = await this.getWorkspaceSetting('selectedAiProvider');
-    return (persistedProvider as SupportedAiProvider | undefined) ??
-      this.appConfigService.defaultAiProvider;
+    const persistedProvider =
+      await this.getWorkspaceSetting('selectedAiProvider');
+    return (
+      (persistedProvider as SupportedAiProvider | undefined) ??
+      this.appConfigService.defaultAiProvider
+    );
   }
 
   async setSelectedAiProvider(provider: SupportedAiProvider) {
@@ -141,14 +146,15 @@ export class SettingsService {
       openAiModel:
         openAiCredential?.metadata?.model ?? this.appConfigService.openAiModel,
       openAiApiKeyConfigured: Boolean(
-        openAiCredential?.secretData?.apiKey ?? this.appConfigService.openAiApiKey,
+        openAiCredential?.secretData?.apiKey ??
+        this.appConfigService.openAiApiKey,
       ),
       anthropicModel:
         anthropicCredential?.metadata?.model ??
         this.appConfigService.anthropicModel,
       anthropicApiKeyConfigured: Boolean(
         anthropicCredential?.secretData?.apiKey ??
-          this.appConfigService.anthropicApiKey,
+        this.appConfigService.anthropicApiKey,
       ),
     };
   }
@@ -156,7 +162,8 @@ export class SettingsService {
   async getSlackSettings(): Promise<SlackSettings> {
     const slackCredential = await this.getProviderCredential('slack');
     const botToken =
-      slackCredential?.secretData?.botToken ?? this.appConfigService.slackBotToken;
+      slackCredential?.secretData?.botToken ??
+      this.appConfigService.slackBotToken;
     const signingSecret =
       slackCredential?.secretData?.signingSecret ??
       this.appConfigService.slackSigningSecret;
@@ -174,11 +181,14 @@ export class SettingsService {
     const baseUrl =
       jiraConnection?.config?.baseUrl ?? this.appConfigService.jiraBaseUrl;
     const projectKey =
-      jiraConnection?.config?.projectKey ?? this.appConfigService.jiraProjectKey;
+      jiraConnection?.config?.projectKey ??
+      this.appConfigService.jiraProjectKey;
     const userEmail =
-      jiraCredential?.metadata?.userEmail ?? this.appConfigService.jiraUserEmail;
+      jiraCredential?.metadata?.userEmail ??
+      this.appConfigService.jiraUserEmail;
     const apiToken =
-      jiraCredential?.secretData?.apiToken ?? this.appConfigService.jiraApiToken;
+      jiraCredential?.secretData?.apiToken ??
+      this.appConfigService.jiraApiToken;
 
     return {
       baseUrl,

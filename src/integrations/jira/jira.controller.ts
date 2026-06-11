@@ -17,7 +17,10 @@ export class JiraController {
     @Headers() headers: Record<string, string | string[] | undefined>,
     @Body() body: JiraWebhookDto,
   ) {
-    const deliveryId = this.getHeader(headers, 'x-atlassian-webhook-identifier');
+    const deliveryId = this.getHeader(
+      headers,
+      'x-atlassian-webhook-identifier',
+    );
     const externalEventId = this.canonicalEventService.getJiraSourceEventId(
       body,
       deliveryId,
@@ -76,7 +79,8 @@ export class JiraController {
         ok: true,
         status: 'failed',
         eventId: externalEventId,
-        message: error instanceof Error ? error.message : 'Unknown workflow error',
+        message:
+          error instanceof Error ? error.message : 'Unknown workflow error',
       };
     }
   }
