@@ -1,45 +1,24 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AppConfigService } from '../config/app-config.service';
-import { AuditLogEntity } from './entities/audit-log.entity';
-import { InboundEventEntity } from './entities/inbound-event.entity';
-import { IntegrationConnectionEntity } from './entities/integration-connection.entity';
-import { JiraTicketMappingEntity } from './entities/jira-ticket-mapping.entity';
-import { ProviderCredentialEntity } from './entities/provider-credential.entity';
-import { WorkflowRunEntity } from './entities/workflow-run.entity';
-import { WorkspaceSettingEntity } from './entities/workspace-setting.entity';
+import { createTypeOrmOptions, databaseEntities } from './typeorm.config';
 
 @Module({
   imports: [
     TypeOrmModule.forRootAsync({
       inject: [AppConfigService],
-      useFactory: (appConfigService: AppConfigService) => {
-        if (appConfigService.databaseUrl) {
-          return {
-            type: 'postgres' as const,
-            url: appConfigService.databaseUrl,
-            autoLoadEntities: true,
-            synchronize: true,
-          };
-        }
-
-        return {
-          type: 'sqljs' as const,
-          autoLoadEntities: true,
-          synchronize: true,
-          autoSave: false,
-        };
-      },
+      useFactory: (appConfigService: AppConfigService) =>
+        createTypeOrmOptions({
+          nodeEnv: appConfigService.nodeEnv,
+          databaseUrl: appConfigService.databaseUrl,
+          postgresHost: appConfigService.postgresHost,
+          postgresPort: appConfigService.postgresPort,
+          postgresUser: appConfigService.postgresUser,
+          postgresPassword: appConfigService.postgresPassword,
+          postgresDatabase: appConfigService.postgresDatabase,
+        }),
     }),
-    TypeOrmModule.forFeature([
-      WorkspaceSettingEntity,
-      ProviderCredentialEntity,
-      IntegrationConnectionEntity,
-      InboundEventEntity,
-      WorkflowRunEntity,
-      AuditLogEntity,
-      JiraTicketMappingEntity,
-    ]),
+    TypeOrmModule.forFeature([...databaseEntities]),
   ],
   exports: [TypeOrmModule],
 })

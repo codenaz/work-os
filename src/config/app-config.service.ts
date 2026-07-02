@@ -17,10 +17,7 @@ export class AppConfigService {
   }
 
   get adminToken() {
-    return (
-      this.configService.get('ADMIN_TOKEN', { infer: true }) ??
-      'work-os-local-admin'
-    );
+    return this.configService.get('ADMIN_TOKEN', { infer: true }) ?? 'token';
   }
 
   get aiMode() {
@@ -43,8 +40,30 @@ export class AppConfigService {
     return this.configService.get('DATABASE_URL', { infer: true });
   }
 
+  get postgresHost() {
+    return (
+      this.configService.get('POSTGRES_HOST', { infer: true }) ?? '127.0.0.1'
+    );
+  }
+
+  get postgresPort() {
+    return this.configService.get('POSTGRES_PORT', { infer: true }) ?? 5432;
+  }
+
+  get postgresUser() {
+    return this.configService.get('POSTGRES_USER', { infer: true }) ?? '';
+  }
+
+  get postgresPassword() {
+    return this.configService.get('POSTGRES_PASSWORD', { infer: true }) ?? '';
+  }
+
+  get postgresDatabase() {
+    return this.configService.get('POSTGRES_DB', { infer: true }) ?? 'work_os';
+  }
+
   get databaseEngine() {
-    return this.databaseUrl ? 'postgres' : 'sqljs';
+    return this.nodeEnv === 'test' ? 'sqljs' : 'postgres';
   }
 
   get openAiApiKey() {

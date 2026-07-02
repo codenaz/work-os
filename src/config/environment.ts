@@ -28,12 +28,17 @@ export const environmentSchema = z.object({
     .default('development'),
   PORT: z.coerce.number().int().positive().optional().default(3000),
   DATABASE_URL: optionalString,
+  POSTGRES_HOST: z.string().trim().optional().default('127.0.0.1'),
+  POSTGRES_PORT: z.coerce.number().int().positive().optional().default(5432),
+  POSTGRES_USER: z.string().trim().optional().default(''),
+  POSTGRES_PASSWORD: z.string().trim().optional().default(''),
+  POSTGRES_DB: z.string().trim().optional().default('work_os'),
   ADMIN_TOKEN: z
     .string()
     .trim()
-    .min(12)
+    .min(1)
     .optional()
-    .default('work-os-local-admin'),
+    .default('token'),
   AI_MODE: z.enum(['stub', 'live']).optional().default('stub'),
   DEFAULT_AI_PROVIDER: z
     .enum(['stub', 'openai', 'anthropic'])

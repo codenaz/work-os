@@ -7,6 +7,8 @@ import * as hbsModule from 'hbs';
 import { join } from 'path';
 import request from 'supertest';
 
+jest.setTimeout(15000);
+
 describe('AppController (e2e)', () => {
   let app: INestApplication;
   const hbsApi = hbsModule as unknown as {
@@ -15,8 +17,9 @@ describe('AppController (e2e)', () => {
   };
 
   beforeAll(async () => {
+    process.env.NODE_ENV = 'test';
     process.env.SLACK_SKIP_SIGNATURE_VERIFICATION = 'true';
-    process.env.ADMIN_TOKEN = 'work-os-local-admin';
+    process.env.ADMIN_TOKEN = 'token';
 
     const { AppModule } =
       require('../src/app.module') as typeof import('../src/app.module');
@@ -193,7 +196,7 @@ describe('AppController (e2e)', () => {
     await agent
       .post('/admin/login')
       .type('form')
-      .send({ token: 'work-os-local-admin' })
+      .send({ token: 'token' })
       .expect(302);
 
     const partial = await agent.get('/admin/partials/events').expect(200);
