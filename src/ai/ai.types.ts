@@ -1,6 +1,8 @@
 import { CanonicalEvent } from '../events/canonical-event';
 import { SupportedAiProvider } from '../settings/settings.service';
 
+export type GitHubExecutionRunner = 'copilot' | 'claude';
+
 export type WorkflowAction =
   | 'respond_in_slack'
   | 'create_jira_ticket'
@@ -56,6 +58,8 @@ export interface WorkflowDecision {
   responseText: string;
   jiraSummary?: string;
   jiraDescription?: string;
+  githubRepositoryOwner?: string;
+  githubExecutionRunner?: GitHubExecutionRunner;
   githubPrTitle?: string;
   githubPrBody?: string;
   githubRepository?: string;

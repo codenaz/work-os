@@ -64,8 +64,12 @@ export class AdminService {
         owner: githubSettings.owner ?? '',
         defaultRepository: githubSettings.defaultRepository ?? '',
         defaultBaseBranch: githubSettings.defaultBaseBranch ?? 'main',
+        executionRunner: githubSettings.executionRunner,
         prCreationEnabled: githubSettings.prCreationEnabled,
         defaultDraftPr: githubSettings.defaultDraftPr,
+        claudeRemoteEnabled: githubSettings.claudeRemoteEnabled,
+        claudeCommand: githubSettings.claudeCommand,
+        claudeWorkingDirectory: githubSettings.claudeWorkingDirectory,
       },
       recentEvents,
       recentRuns,
@@ -154,6 +158,10 @@ export class AdminService {
   }
 
   async updateGitHubSettings(dto: UpdateGitHubSettingsDto) {
+    if (dto.executionRunner) {
+      await this.settingsService.setGitHubExecutionRunner(dto.executionRunner);
+    }
+
     await this.settingsService.upsertProviderCredential(
       'github',
       this.filterEmpty({
@@ -169,6 +177,22 @@ export class AdminService {
 
     if (dto.defaultDraftPr !== undefined) {
       await this.settingsService.setGitHubDefaultDraftPr(dto.defaultDraftPr);
+    }
+
+    if (dto.claudeRemoteEnabled !== undefined) {
+      await this.settingsService.setClaudeRemoteEnabled(
+        dto.claudeRemoteEnabled,
+      );
+    }
+
+    if (dto.claudeCommand?.trim()) {
+      await this.settingsService.setClaudeCommand(dto.claudeCommand);
+    }
+
+    if (dto.claudeWorkingDirectory?.trim()) {
+      await this.settingsService.setClaudeWorkingDirectory(
+        dto.claudeWorkingDirectory,
+      );
     }
 
     await this.settingsService.upsertIntegrationConnection(

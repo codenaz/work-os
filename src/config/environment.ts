@@ -61,6 +61,17 @@ export const environmentSchema = z.object({
   GITHUB_DEFAULT_BASE_BRANCH: optionalString,
   GITHUB_PR_CREATION_ENABLED: booleanFromEnv,
   GITHUB_DEFAULT_DRAFT_PR: booleanFromEnv,
+  GITHUB_EXECUTION_RUNNER: z
+    .enum(['copilot', 'claude'])
+    .optional()
+    .default('copilot'),
+  CLAUDE_REMOTE_ENABLED: booleanFromEnv,
+  CLAUDE_COMMAND: z.string().trim().optional().default('claude'),
+  CLAUDE_WORKING_DIRECTORY: z
+    .string()
+    .trim()
+    .optional()
+    .default('/tmp/work-os-claude'),
 });
 
 export type EnvironmentVariables = z.infer<typeof environmentSchema>;

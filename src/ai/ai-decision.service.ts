@@ -8,7 +8,11 @@ import { z } from 'zod';
 import { CanonicalEvent } from '../events/canonical-event';
 import { SettingsService } from '../settings/settings.service';
 import { AiProviderFactory } from './ai-provider.factory';
-import { isWorkflowActionSupported, WorkflowDecision } from './ai.types';
+import {
+  GitHubExecutionRunner,
+  isWorkflowActionSupported,
+  WorkflowDecision,
+} from './ai.types';
 
 const workflowDecisionSchema = z.object({
   action: z.enum([
@@ -20,6 +24,8 @@ const workflowDecisionSchema = z.object({
   responseText: z.string().min(1),
   jiraSummary: z.string().optional(),
   jiraDescription: z.string().optional(),
+  githubRepositoryOwner: z.string().optional(),
+  githubExecutionRunner: z.enum(['copilot', 'claude']).optional(),
   githubPrTitle: z.string().optional(),
   githubPrBody: z.string().optional(),
   githubRepository: z.string().optional(),
@@ -42,7 +48,10 @@ export class AiDecisionService {
   ) {}
 
   async decide(event: CanonicalEvent): Promise<WorkflowDecision> {
-    const aiSettings = await this.settingsService.getAiSettings();
+    const [aiSettings, githubSettings] = await Promise.all([
+      this.settingsService.getAiSettings(),
+      this.settingsService.getGitHubSettings(),
+    ]);
 
     if (aiSettings.mode === 'stub' || aiSettings.selectedProvider === 'stub') {
       const stubDecision = this.createStubDecision(event);
@@ -63,6 +72,13 @@ export class AiDecisionService {
         JSON.stringify(
           {
             event,
+            githubExecution: {
+              defaultRunner: githubSettings.executionRunner,
+              copilotEnabled: githubSettings.prCreationEnabled,
+              claudeEnabled: githubSettings.claudeRemoteEnabled,
+              defaultRepository: githubSettings.defaultRepository,
+              defaultBaseBranch: githubSettings.defaultBaseBranch,
+            },
           },
           null,
           2,
@@ -112,12 +128,12 @@ export class AiDecisionService {
       return {
         action: 'create_github_pr',
         responseText:
-          'I prepared a conservative GitHub draft PR with a bounded scaffold to capture the request.',
+          'I prepared a conservative remote coding task with a bounded prompt to capture the request.',
         githubPrTitle: this.summarizeForGitHub(event.content.text),
         githubPrBody: this.buildGitHubBody(event.content.text),
         githubDraft: true,
         rationale:
-          'The request explicitly asks for a GitHub PR and includes enough detail to open a bounded draft safely.',
+          'The request explicitly asks for a GitHub PR and includes enough detail to hand off a bounded coding task safely.',
         confidence: 'medium',
         provider: 'stub',
         model: 'rule-based-router',
@@ -153,18 +169,19 @@ export class AiDecisionService {
     return [
       'You are the routing brain for Work OS.',
       'You may choose exactly one action: respond_in_slack, create_jira_ticket, create_github_pr, or skip_event.',
-      'Return only valid JSON with keys action, responseText, jiraSummary, jiraDescription, githubPrTitle, githubPrBody, githubRepository, githubBaseBranch, githubDraft, rationale, confidence.',
+      'Return only valid JSON with keys action, responseText, jiraSummary, jiraDescription, githubRepositoryOwner, githubExecutionRunner, githubPrTitle, githubPrBody, githubRepository, githubBaseBranch, githubDraft, rationale, confidence.',
       'respond_in_slack is only valid for Slack events that have a conversational target.',
       'create_github_pr is only valid for Slack and Jira events and requires enough context for a bounded change request.',
+      'If create_github_pr is selected, choose githubExecutionRunner as either copilot or claude based on the available execution options provided in the input.',
       'Never choose create_github_pr for GitHub-originated events to avoid loop behavior.',
       'skip_event is the safe choice when context or configuration is insufficient.',
     ].join(' ');
   }
 
-  private enforceActionPolicy(
+  private async enforceActionPolicy(
     event: CanonicalEvent,
     decision: WorkflowDecision,
-  ): WorkflowDecision {
+  ): Promise<WorkflowDecision> {
     if (!isWorkflowActionSupported(decision.action, event)) {
       return this.toSkipDecision(
         event,
@@ -174,9 +191,29 @@ export class AiDecisionService {
     }
 
     if (decision.action === 'create_github_pr') {
+      const resolvedTarget = await this.resolveGitHubTarget(event, decision);
+
+      if (!resolvedTarget) {
+        return this.toSkipDecision(
+          event,
+          decision,
+          'GitHub PR creation requires a resolvable repository target from explicit context or configured defaults.',
+        );
+      }
+
+      const enrichedDecision = {
+        ...decision,
+        githubRepositoryOwner: resolvedTarget.owner,
+        githubExecutionRunner: resolvedTarget.runner,
+        githubRepository: resolvedTarget.repository,
+        githubBaseBranch:
+          decision.githubBaseBranch ?? resolvedTarget.baseBranch,
+        githubDraft: decision.githubDraft ?? resolvedTarget.defaultDraftPr,
+      };
+
       const hasEnoughContext = this.hasEnoughContextForGitHubPr(
         event,
-        decision,
+        enrichedDecision,
       );
       if (!hasEnoughContext) {
         return this.toSkipDecision(
@@ -185,9 +222,73 @@ export class AiDecisionService {
           'GitHub PR creation requires explicit, bounded context and clear implementation intent.',
         );
       }
+
+      return enrichedDecision;
     }
 
     return decision;
+  }
+
+  private async resolveGitHubTarget(
+    event: CanonicalEvent,
+    decision: WorkflowDecision,
+  ) {
+    const githubSettings = await this.settingsService.getGitHubSettings();
+    const runner = this.resolveGitHubExecutionRunner(decision, githubSettings);
+
+    if (!runner) {
+      return null;
+    }
+
+    const directDecisionTarget = this.normalizeRepositoryTarget(
+      decision.githubRepositoryOwner,
+      decision.githubRepository,
+    );
+
+    if (directDecisionTarget) {
+      return {
+        ...directDecisionTarget,
+        runner,
+        baseBranch: decision.githubBaseBranch,
+        defaultDraftPr: decision.githubDraft ?? true,
+      };
+    }
+
+    const eventTarget = this.extractRepositoryTarget(event.content.text);
+    if (eventTarget) {
+      return {
+        ...eventTarget,
+        runner,
+        baseBranch: decision.githubBaseBranch,
+        defaultDraftPr: decision.githubDraft ?? true,
+      };
+    }
+
+    if (githubSettings.owner && githubSettings.defaultRepository) {
+      return {
+        owner: githubSettings.owner,
+        repository: githubSettings.defaultRepository,
+        runner,
+        baseBranch: githubSettings.defaultBaseBranch ?? 'main',
+        defaultDraftPr: githubSettings.defaultDraftPr,
+      };
+    }
+
+    return null;
+  }
+
+  private resolveGitHubExecutionRunner(
+    decision: WorkflowDecision,
+    githubSettings: Awaited<ReturnType<SettingsService['getGitHubSettings']>>,
+  ): GitHubExecutionRunner | null {
+    const preferredRunner =
+      decision.githubExecutionRunner ?? githubSettings.executionRunner;
+
+    if (preferredRunner === 'claude') {
+      return githubSettings.claudeRemoteEnabled ? 'claude' : null;
+    }
+
+    return githubSettings.prCreationEnabled ? 'copilot' : null;
   }
 
   private hasEnoughContextForGitHubPr(
@@ -213,11 +314,65 @@ export class AiDecisionService {
     return (
       hasActionVerb &&
       hasScopeMarker &&
+      Boolean(decision.githubRepositoryOwner) &&
+      Boolean(decision.githubRepository) &&
+      Boolean(decision.githubExecutionRunner) &&
       Boolean(
         decision.githubPrTitle?.trim() ||
-        text.length >= FALLBACK_GITHUB_PR_CONTEXT_LENGTH,
+          text.length >= FALLBACK_GITHUB_PR_CONTEXT_LENGTH,
       )
     );
+  }
+
+  private extractRepositoryTarget(text: string) {
+    const repoUrlMatch = text.match(
+      /https?:\/\/github\.com\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)/i,
+    );
+    if (repoUrlMatch) {
+      return {
+        owner: repoUrlMatch[1],
+        repository: repoUrlMatch[2].replace(/\.git$/i, ''),
+      };
+    }
+
+    const repoHintMatch = text.match(
+      /\b(?:repo|repository)\s+([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)\b/i,
+    );
+    if (repoHintMatch) {
+      return {
+        owner: repoHintMatch[1],
+        repository: repoHintMatch[2],
+      };
+    }
+
+    return null;
+  }
+
+  private normalizeRepositoryTarget(owner?: string, repository?: string) {
+    if (owner && repository) {
+      return {
+        owner: owner.trim(),
+        repository: repository.trim(),
+      };
+    }
+
+    if (!repository) {
+      return null;
+    }
+
+    const trimmedRepository = repository.trim();
+    const fullNameMatch = trimmedRepository.match(
+      /^([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)$/,
+    );
+
+    if (!fullNameMatch) {
+      return null;
+    }
+
+    return {
+      owner: fullNameMatch[1],
+      repository: fullNameMatch[2],
+    };
   }
 
   private toSkipDecision(
@@ -234,6 +389,8 @@ export class AiDecisionService {
       jiraDescription: undefined,
       githubPrTitle: undefined,
       githubPrBody: undefined,
+      githubRepositoryOwner: undefined,
+      githubExecutionRunner: undefined,
       githubRepository: undefined,
       githubBaseBranch: undefined,
       githubDraft: undefined,
