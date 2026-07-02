@@ -1,5 +1,5 @@
 import { Transform } from 'class-transformer';
-import { IsBoolean, IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsIn, IsOptional, IsString } from 'class-validator';
 
 function toOptionalBoolean(value: unknown) {
   if (value === undefined || value === null || value === '') {
@@ -42,6 +42,10 @@ export class UpdateGitHubSettingsDto {
   defaultBaseBranch?: string;
 
   @IsOptional()
+  @IsIn(['copilot', 'claude'])
+  executionRunner?: 'copilot' | 'claude';
+
+  @IsOptional()
   @Transform(({ value }) => toOptionalBoolean(value))
   @IsBoolean()
   prCreationEnabled?: boolean;
@@ -50,4 +54,17 @@ export class UpdateGitHubSettingsDto {
   @Transform(({ value }) => toOptionalBoolean(value))
   @IsBoolean()
   defaultDraftPr?: boolean;
+
+  @IsOptional()
+  @Transform(({ value }) => toOptionalBoolean(value))
+  @IsBoolean()
+  claudeRemoteEnabled?: boolean;
+
+  @IsOptional()
+  @IsString()
+  claudeCommand?: string;
+
+  @IsOptional()
+  @IsString()
+  claudeWorkingDirectory?: string;
 }

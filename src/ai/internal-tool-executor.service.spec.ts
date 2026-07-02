@@ -1,5 +1,6 @@
 import { InternalServerErrorException } from '@nestjs/common';
 import { CanonicalEvent } from '../events/canonical-event';
+import { ClaudeCodeService } from '../integrations/github/claude-code.service';
 import { GitHubClientService } from '../integrations/github/github-client.service';
 import { JiraClientService } from '../integrations/jira/jira-client.service';
 import { SlackClientService } from '../integrations/slack/slack-client.service';
@@ -33,7 +34,8 @@ describe('InternalToolExecutorService', () => {
     const service = new InternalToolExecutorService(
       { sendMessage } as unknown as SlackClientService,
       { createIssue } as unknown as JiraClientService,
-      { createPullRequest: jest.fn() } as unknown as GitHubClientService,
+      { startCopilotTask: jest.fn() } as unknown as GitHubClientService,
+      { startRemoteTask: jest.fn() } as unknown as ClaudeCodeService,
     );
 
     const decision: WorkflowDecision = {
@@ -62,24 +64,27 @@ describe('InternalToolExecutorService', () => {
     expect(sendMessage).not.toHaveBeenCalled();
   });
 
-  it('creates a GitHub PR for create_github_pr actions', async () => {
-    const createPullRequest = jest.fn().mockResolvedValue({
+  it('starts a Copilot task for create_github_pr actions', async () => {
+    const startCopilotTask = jest.fn().mockResolvedValue({
       mode: 'mock',
+      owner: 'codenaz',
       repository: 'work-os',
-      branch: 'work-os/test',
-      pullRequestNumber: 7,
-      pullRequestUrl: 'https://github.com/codenaz/work-os/pull/7',
+      taskId: 'task-7',
+      taskState: 'queued',
+      taskUrl: 'https://github.com/codenaz/work-os/copilot/tasks/task-7',
     });
 
     const service = new InternalToolExecutorService(
       { sendMessage: jest.fn() } as unknown as SlackClientService,
       { createIssue: jest.fn() } as unknown as JiraClientService,
-      { createPullRequest } as unknown as GitHubClientService,
+      { startCopilotTask } as unknown as GitHubClientService,
+      { startRemoteTask: jest.fn() } as unknown as ClaudeCodeService,
     );
 
     const decision: WorkflowDecision = {
       action: 'create_github_pr',
       responseText: 'Created draft PR.',
+      githubExecutionRunner: 'copilot',
       githubPrTitle: 'Implement webhook support',
       githubPrBody: '## Summary\nAdd webhook support.',
       githubRepository: 'work-os',
@@ -93,19 +98,79 @@ describe('InternalToolExecutorService', () => {
 
     await expect(service.execute(decision, baseEvent)).resolves.toEqual({
       output: {
-        githubPullRequest: {
+        githubExecution: {
           mode: 'mock',
+          owner: 'codenaz',
           repository: 'work-os',
-          branch: 'work-os/test',
-          pullRequestNumber: 7,
-          pullRequestUrl: 'https://github.com/codenaz/work-os/pull/7',
+          taskId: 'task-7',
+          taskState: 'queued',
+          taskUrl: 'https://github.com/codenaz/work-os/copilot/tasks/task-7',
         },
       },
     });
 
-    expect(createPullRequest).toHaveBeenCalledWith({
+    expect(startCopilotTask).toHaveBeenCalledWith({
       title: 'Implement webhook support',
       body: '## Summary\nAdd webhook support.',
+      owner: undefined,
+      repository: 'work-os',
+      baseBranch: 'main',
+      draft: true,
+    });
+  });
+
+  it('starts a Claude remote task when the decision chooses claude', async () => {
+    const startRemoteTask = jest.fn().mockResolvedValue({
+      mode: 'mock',
+      runner: 'claude',
+      owner: 'codenaz',
+      repository: 'work-os',
+      baseBranch: 'main',
+      workingDirectory: '/tmp/work-os-claude/mock-claude-1',
+      output: 'Claude remote task queued in mock mode.',
+    });
+
+    const service = new InternalToolExecutorService(
+      { sendMessage: jest.fn() } as unknown as SlackClientService,
+      { createIssue: jest.fn() } as unknown as JiraClientService,
+      { startCopilotTask: jest.fn() } as unknown as GitHubClientService,
+      { startRemoteTask } as unknown as ClaudeCodeService,
+    );
+
+    const decision: WorkflowDecision = {
+      action: 'create_github_pr',
+      responseText: 'Started Claude remote run.',
+      githubExecutionRunner: 'claude',
+      githubRepositoryOwner: 'codenaz',
+      githubPrTitle: 'Implement webhook support',
+      githubPrBody: '## Summary\nAdd webhook support.',
+      githubRepository: 'work-os',
+      githubBaseBranch: 'main',
+      githubDraft: true,
+      rationale: 'Request is implementation-ready.',
+      confidence: 'high',
+      provider: 'stub',
+      model: 'rule-based-router',
+    };
+
+    await expect(service.execute(decision, baseEvent)).resolves.toEqual({
+      output: {
+        githubExecution: {
+          mode: 'mock',
+          runner: 'claude',
+          owner: 'codenaz',
+          repository: 'work-os',
+          baseBranch: 'main',
+          workingDirectory: '/tmp/work-os-claude/mock-claude-1',
+          output: 'Claude remote task queued in mock mode.',
+        },
+      },
+    });
+
+    expect(startRemoteTask).toHaveBeenCalledWith({
+      title: 'Implement webhook support',
+      body: '## Summary\nAdd webhook support.',
+      owner: 'codenaz',
       repository: 'work-os',
       baseBranch: 'main',
       draft: true,
@@ -115,12 +180,13 @@ describe('InternalToolExecutorService', () => {
   it('can skip an event without invoking downstream clients', async () => {
     const sendMessage = jest.fn();
     const createIssue = jest.fn();
-    const createPullRequest = jest.fn();
+    const startCopilotTask = jest.fn();
 
     const service = new InternalToolExecutorService(
       { sendMessage } as unknown as SlackClientService,
       { createIssue } as unknown as JiraClientService,
-      { createPullRequest } as unknown as GitHubClientService,
+      { startCopilotTask } as unknown as GitHubClientService,
+      { startRemoteTask: jest.fn() } as unknown as ClaudeCodeService,
     );
 
     const decision: WorkflowDecision = {
@@ -140,7 +206,7 @@ describe('InternalToolExecutorService', () => {
     });
     expect(sendMessage).not.toHaveBeenCalled();
     expect(createIssue).not.toHaveBeenCalled();
-    expect(createPullRequest).not.toHaveBeenCalled();
+    expect(startCopilotTask).not.toHaveBeenCalled();
   });
 
   it('still requires a Slack channel for Slack responses', async () => {
@@ -152,8 +218,11 @@ describe('InternalToolExecutorService', () => {
         createIssue: jest.fn(),
       } as unknown as JiraClientService,
       {
-        createPullRequest: jest.fn(),
+        startCopilotTask: jest.fn(),
       } as unknown as GitHubClientService,
+      {
+        startRemoteTask: jest.fn(),
+      } as unknown as ClaudeCodeService,
     );
 
     const decision: WorkflowDecision = {

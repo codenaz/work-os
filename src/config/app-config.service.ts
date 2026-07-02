@@ -133,4 +133,30 @@ export class AppConfigService {
       this.configService.get('GITHUB_DEFAULT_DRAFT_PR', { infer: true }) ?? true
     );
   }
+
+  get githubExecutionRunner() {
+    return (
+      this.configService.get('GITHUB_EXECUTION_RUNNER', { infer: true }) ??
+      'copilot'
+    );
+  }
+
+  get claudeRemoteEnabled() {
+    return (
+      this.configService.get('CLAUDE_REMOTE_ENABLED', { infer: true }) ?? false
+    );
+  }
+
+  get claudeCommand() {
+    return (
+      this.configService.get('CLAUDE_COMMAND', { infer: true }) ?? 'claude'
+    );
+  }
+
+  get claudeWorkingDirectory() {
+    return (
+      this.configService.get('CLAUDE_WORKING_DIRECTORY', { infer: true }) ??
+      '/tmp/work-os-claude'
+    );
+  }
 }

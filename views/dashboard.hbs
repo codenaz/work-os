@@ -141,14 +141,35 @@
             <input name="defaultBaseBranch" value="{{dashboard.githubSettings.defaultBaseBranch}}" />
           </label>
           <label>
+            <span>Execution runner</span>
+            <select name="executionRunner">
+              <option value="{{dashboard.githubSettings.executionRunner}}">current: {{dashboard.githubSettings.executionRunner}}</option>
+              <option value="copilot">copilot</option>
+              <option value="claude">claude</option>
+            </select>
+          </label>
+          <label>
             <input type="hidden" name="prCreationEnabled" value="false" />
             <input type="checkbox" name="prCreationEnabled" value="true" {{#if dashboard.githubSettings.prCreationEnabled}}checked{{/if}} />
-            <span>Enable autonomous GitHub PR creation</span>
+            <span>Enable Copilot cloud execution</span>
           </label>
           <label>
             <input type="hidden" name="defaultDraftPr" value="false" />
             <input type="checkbox" name="defaultDraftPr" value="true" {{#if dashboard.githubSettings.defaultDraftPr}}checked{{/if}} />
             <span>Default new PRs to draft</span>
+          </label>
+          <label>
+            <input type="hidden" name="claudeRemoteEnabled" value="false" />
+            <input type="checkbox" name="claudeRemoteEnabled" value="true" {{#if dashboard.githubSettings.claudeRemoteEnabled}}checked{{/if}} />
+            <span>Enable Claude remote execution</span>
+          </label>
+          <label>
+            <span>Claude command</span>
+            <input name="claudeCommand" value="{{dashboard.githubSettings.claudeCommand}}" />
+          </label>
+          <label>
+            <span>Claude working directory</span>
+            <input name="claudeWorkingDirectory" value="{{dashboard.githubSettings.claudeWorkingDirectory}}" />
           </label>
           <button type="submit">Save GitHub settings</button>
         </form>

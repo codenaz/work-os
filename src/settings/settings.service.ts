@@ -37,8 +37,12 @@ export interface GitHubSettings {
   owner?: string;
   defaultRepository?: string;
   defaultBaseBranch?: string;
+  executionRunner: 'copilot' | 'claude';
   prCreationEnabled: boolean;
   defaultDraftPr: boolean;
+  claudeRemoteEnabled: boolean;
+  claudeCommand: string;
+  claudeWorkingDirectory: string;
   configured: boolean;
 }
 
@@ -217,6 +221,9 @@ export class SettingsService {
     const defaultBaseBranch =
       githubConnection?.config?.defaultBaseBranch ??
       this.appConfigService.githubDefaultBaseBranch;
+    const executionRunnerSetting = await this.getWorkspaceSetting(
+      'githubExecutionRunner',
+    );
 
     const prCreationEnabledSetting = await this.getWorkspaceSetting(
       'githubPrCreationEnabled',
@@ -224,6 +231,18 @@ export class SettingsService {
     const defaultDraftPrSetting = await this.getWorkspaceSetting(
       'githubDefaultDraftPr',
     );
+    const claudeRemoteEnabledSetting = await this.getWorkspaceSetting(
+      'claudeRemoteEnabled',
+    );
+    const claudeCommandSetting = await this.getWorkspaceSetting(
+      'claudeCommand',
+    );
+    const claudeWorkingDirectorySetting = await this.getWorkspaceSetting(
+      'claudeWorkingDirectory',
+    );
+
+    const executionRunner =
+      executionRunnerSetting === 'claude' ? 'claude' : 'copilot';
 
     const prCreationEnabled =
       prCreationEnabledSetting === undefined
@@ -233,16 +252,33 @@ export class SettingsService {
       defaultDraftPrSetting === undefined
         ? this.appConfigService.githubDefaultDraftPr
         : defaultDraftPrSetting === 'true';
+    const claudeRemoteEnabled =
+      claudeRemoteEnabledSetting === undefined
+        ? this.appConfigService.claudeRemoteEnabled
+        : claudeRemoteEnabledSetting === 'true';
+    const claudeCommand =
+      claudeCommandSetting ?? this.appConfigService.claudeCommand;
+    const claudeWorkingDirectory =
+      claudeWorkingDirectorySetting ??
+      this.appConfigService.claudeWorkingDirectory;
 
     return {
       token,
       owner,
       defaultRepository,
       defaultBaseBranch,
+      executionRunner,
       prCreationEnabled,
       defaultDraftPr,
+      claudeRemoteEnabled,
+      claudeCommand,
+      claudeWorkingDirectory,
       configured: Boolean(token && owner && defaultRepository),
     };
+  }
+
+  async setGitHubExecutionRunner(runner: 'copilot' | 'claude') {
+    await this.setWorkspaceSetting('githubExecutionRunner', runner);
   }
 
   async setGitHubPrCreationEnabled(enabled: boolean) {
@@ -251,5 +287,17 @@ export class SettingsService {
 
   async setGitHubDefaultDraftPr(enabled: boolean) {
     await this.setWorkspaceSetting('githubDefaultDraftPr', String(enabled));
+  }
+
+  async setClaudeRemoteEnabled(enabled: boolean) {
+    await this.setWorkspaceSetting('claudeRemoteEnabled', String(enabled));
+  }
+
+  async setClaudeCommand(command: string) {
+    await this.setWorkspaceSetting('claudeCommand', command);
+  }
+
+  async setClaudeWorkingDirectory(directory: string) {
+    await this.setWorkspaceSetting('claudeWorkingDirectory', directory);
   }
 }
